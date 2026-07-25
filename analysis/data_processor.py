@@ -33,6 +33,72 @@ REQUIRED_COLUMNS = {
 }
 
 NUMERIC_COLUMNS = ["Quantity", "Unit_Price", "Discount", "Revenue", "Profit"]
+COLUMN_ALIASES = {
+    "Order_ID": ["order id", "order_id", "orderid", "order no", "order number", "invoice id", "invoice no", "invoice number"],
+    "Order_Date": ["order date", "order_date", "date", "invoice date", "purchase date", "transaction date"],
+    "Customer_ID": ["customer id", "customer_id", "customerid", "client id", "buyer id"],
+    "Customer_Name": ["customer name", "customer_name", "customer", "client", "buyer name", "name"],
+    "Segment": ["segment", "customer segment", "market segment"],
+    "City": ["city", "town"],
+    "State": ["state", "province"],
+    "Region": ["region", "zone", "area"],
+    "Category": ["category", "product category", "item category"],
+    "Sub_Category": ["sub-category", "sub_category", "subcategory", "sub category", "product sub-category"],
+    "Product_Name": ["product name", "product_name", "product", "item", "item name", "sku name"],
+    "Quantity": ["quantity", "qty", "units", "unit sold", "units sold"],
+    "Unit_Price": ["unit price", "unit_price", "price", "selling price", "rate"],
+    "Discount": ["discount", "discount %", "discount percent", "discount rate"],
+    "Revenue": ["revenue", "sales", "amount", "total", "total sales", "sales amount", "net sales"],
+    "Profit": ["profit", "gross profit", "net profit", "margin amount"],
+    "Payment_Mode": ["payment mode", "payment_mode", "payment", "payment method", "mode of payment"],
+    "Ship_Mode": ["ship mode", "ship_mode", "shipping mode", "delivery mode", "shipment mode"],
+}
+
+OPTIONAL_DEFAULTS = {
+    "Customer_ID": "Unknown Customer",
+    "Customer_Name": "Unknown Customer",
+    "Segment": "Unspecified",
+    "City": "Unspecified",
+    "State": "Unspecified",
+    "Region": "Unspecified",
+    "Category": "Uncategorized",
+    "Sub_Category": "Uncategorized",
+    "Product_Name": "Unknown Product",
+    "Quantity": 1,
+    "Unit_Price": 0,
+    "Discount": 0,
+    "Profit": 0,
+    "Payment_Mode": "Unspecified",
+    "Ship_Mode": "Unspecified",
+}
+
+
+def _normalize_column_name(name):
+    return " ".join(str(name).strip().lower().replace("_", " ").replace("-", " ").split())
+
+
+def _standardize_columns(df):
+    normalized = {_normalize_column_name(col): col for col in df.columns}
+    rename_map = {}
+    for canonical, aliases in COLUMN_ALIASES.items():
+        keys = [_normalize_column_name(canonical), *[_normalize_column_name(alias) for alias in aliases]]
+        for key in keys:
+            if key in normalized:
+                rename_map[normalized[key]] = canonical
+                break
+    df = df.rename(columns=rename_map)
+    return df
+
+
+def _fill_optional_columns(df):
+    for column, default in OPTIONAL_DEFAULTS.items():
+        if column not in df.columns:
+            if column == "Unit_Price" and {"Revenue", "Quantity"}.issubset(df.columns):
+                quantity = pd.to_numeric(df["Quantity"], errors="coerce").replace(0, np.nan)
+                df[column] = pd.to_numeric(df["Revenue"], errors="coerce") / quantity
+            else:
+                df[column] = default
+    return df
 
 
 def _safe_pct(numerator, denominator):
@@ -56,11 +122,19 @@ def load_and_clean_data(filepath=None):
         filepath = Path(__file__).resolve().parents[1] / "data" / "sales_data.csv"
 
     df = pd.read_csv(filepath)
-    missing_columns = REQUIRED_COLUMNS.difference(df.columns)
-    if missing_columns:
-        missing = ", ".join(sorted(missing_columns))
-        raise ValueError(f"sales_data.csv is missing required columns: {missing}")
+    df = _standardize_columns(df)
 
+    required_core = {"Order_ID", "Order_Date", "Revenue"}
+    missing_core = required_core.difference(df.columns)
+    if missing_core:
+        missing = ", ".join(sorted(missing_core))
+        available = ", ".join(map(str, df.columns))
+        raise ValueError(
+            f"Uploaded CSV must include order id, order date, and revenue/sales amount columns. "
+            f"Missing: {missing}. Found columns: {available}"
+        )
+
+    df = _fill_optional_columns(df)
     df = df.drop_duplicates(subset=["Order_ID", "Product_Name", "Order_Date"]).copy()
     df["Order_Date"] = pd.to_datetime(df["Order_Date"], errors="coerce")
     for col in NUMERIC_COLUMNS:
@@ -70,7 +144,7 @@ def load_and_clean_data(filepath=None):
     invalid_counts = invalid_counts[invalid_counts > 0]
     if not invalid_counts.empty:
         details = ", ".join(f"{col}: {count}" for col, count in invalid_counts.items())
-        raise ValueError(f"sales_data.csv has invalid values in {details}")
+        raise ValueError(f"CSV has invalid values in {details}")
 
     df = df.sort_values("Order_Date").reset_index(drop=True)
     df["Month"] = df["Order_Date"].dt.to_period("M").astype(str)

@@ -208,8 +208,20 @@ data_source_label = uploaded_file.name if uploaded_file else "data/sales_data.cs
 try:
     df = load_data(uploaded_bytes)
 except Exception as exc:
-    st.error(f"Data could not be loaded: {exc}")
-    st.stop()
+    if uploaded_file:
+        st.error(f"Uploaded CSV could not be used: {exc}")
+        st.info(
+            "Minimum required fields are order id, order date, and revenue/sales amount. "
+            "Common names like 'Order ID', 'Date', 'Sales', 'Amount', 'Product', 'Category', and 'Profit' are auto-detected. "
+            "Showing the included data/sales_data.csv dashboard for now."
+        )
+        uploaded_file = None
+        uploaded_bytes = None
+        data_source_label = "data/sales_data.csv"
+        df = load_data(None)
+    else:
+        st.error(f"Data could not be loaded: {exc}")
+        st.stop()
 
 quality = get_data_quality_summary(df)
 
