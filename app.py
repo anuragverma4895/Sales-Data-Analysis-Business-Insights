@@ -1,110 +1,165 @@
 """
 Sales Data Analysis & Business Insights
-========================================
-A professional-grade Streamlit dashboard with 3D interactive visualizations,
-glass-morphism dark theme, and actionable business insights.
-
-Author: Anurag Verma
-Tech: Streamlit · Plotly · Pandas · NumPy
+=======================================
+Streamlit dashboard backed only by data/sales_data.csv.
 """
 
-import streamlit as st
-import pandas as pd
+
+from io import BytesIO
+
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit as st
 from plotly.subplots import make_subplots
-import os
 
 from analysis.data_processor import (
-    load_and_clean_data,
+    generate_business_insights,
+    get_3d_bar_data,
+    get_3d_scatter_data,
+    get_3d_surface_data,
+    get_category_performance,
+    get_city_analysis,
+    get_customer_segments,
+    get_data_quality_summary,
+    get_discount_profit_correlation,
     get_kpi_metrics,
     get_monthly_trends,
-    get_category_performance,
-    get_subcategory_performance,
-    get_regional_analysis,
-    get_city_analysis,
-    get_seasonal_analysis,
-    get_customer_segments,
     get_payment_analysis,
+    get_profit_margin_heatmap_data,
+    get_regional_analysis,
+    get_seasonal_analysis,
+    get_shipping_analysis,
+    get_strategic_recommendations,
+    get_subcategory_performance,
     get_top_products,
     get_yoy_growth,
-    get_profit_margin_heatmap_data,
-    get_3d_surface_data,
-    get_3d_scatter_data,
-    get_3d_bar_data,
-    get_discount_profit_correlation,
-    get_shipping_analysis,
-    generate_business_insights,
+    load_and_clean_data,
 )
-
-# ═══════════════════════════════════════════════
-# PAGE CONFIGURATION
-# ═══════════════════════════════════════════════
 
 st.set_page_config(
     page_title="Sales Analytics Dashboard | Anurag Verma",
-    page_icon="📊",
+    page_icon=":bar_chart:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Load Custom CSS ──
-css_path = os.path.join(os.path.dirname(__file__), "assets", "style.css")
-if os.path.exists(css_path):
-    with open(css_path, encoding="utf-8") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# ── Material Icons CDN ──
 st.markdown(
     '<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">',
     unsafe_allow_html=True,
 )
 
-# ═══════════════════════════════════════════════
-# PLOTLY THEME CONFIG
-# ═══════════════════════════════════════════════
-
+CUSTOM_CSS = """
+<style>
+:root { --panel: rgba(15, 23, 42, 0.86); --line: rgba(148, 163, 184, 0.18); --text: #F8FAFC; --text-soft: #CBD5E1; --muted: #94A3B8; --shadow: 0 18px 42px rgba(0, 0, 0, 0.28); }
+.stApp { background: linear-gradient(180deg, #090D14 0%, #0B1120 48%, #111827 100%) !important; color: var(--text) !important; font-family: Inter, system-ui, sans-serif !important; }
+.stApp > header, [data-testid="stHeader"] { background: transparent !important; }
+.main .block-container { max-width: 1420px; padding-top: 1.2rem; padding-bottom: 2.5rem; }
+h1, h2, h3, p, span, label { font-family: Inter, system-ui, sans-serif !important; letter-spacing: 0 !important; }
+h1 { color: var(--text) !important; -webkit-text-fill-color: var(--text) !important; background: none !important; font-size: clamp(2rem, 3vw, 3.2rem) !important; line-height: 1.05 !important; font-weight: 800 !important; }
+[data-testid="stSidebar"] { background: #0B1120 !important; border-right: 1px solid var(--line) !important; }
+[data-testid="stSidebar"] h3, [data-testid="stSidebar"] label, [data-testid="stSidebar"] p { color: var(--text-soft) !important; }
+.brand-block { padding: 0.8rem 0.3rem 1.2rem; text-align: left; }
+.brand-block .material-icons-round { color: #38BDF8; font-size: 2rem; }
+.brand-block h1 { margin: 0.35rem 0 0.15rem !important; font-size: 1.25rem !important; }
+.brand-block p { color: var(--muted); margin: 0; font-size: 0.78rem; }
+.source-mini { border: 1px solid var(--line); background: rgba(56, 189, 248, 0.08); border-radius: 8px; color: var(--text-soft); line-height: 1.45; margin-top: 1rem; padding: 0.85rem; }
+.source-mini .material-icons-round { color: #38BDF8; font-size: 1.1rem; vertical-align: middle; margin-right: 0.35rem; }
+.page-hero { align-items: flex-end; border: 1px solid var(--line); background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.88)); border-radius: 8px; box-shadow: var(--shadow); display: flex; justify-content: space-between; gap: 1.5rem; margin-bottom: 1rem; padding: 1.5rem 1.6rem; }
+.page-hero h1 { margin: 0.35rem 0 0.45rem !important; }
+.page-hero p { color: var(--text-soft); font-size: 0.98rem; line-height: 1.55; margin: 0; max-width: 820px; }
+.eyebrow { align-items: center; color: #7DD3FC; display: inline-flex; font-size: 0.78rem; font-weight: 700; gap: 0.35rem; text-transform: uppercase; }
+.eyebrow .material-icons-round { font-size: 1rem; }
+.hero-source { display: grid; gap: 0.55rem; min-width: 190px; }
+.hero-source span { background: rgba(2, 6, 23, 0.55); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font-weight: 700; padding: 0.65rem 0.85rem; text-align: right; }
+.metric-card, .recommendation-card, .insight-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+.metric-card { min-height: 128px; overflow: hidden; padding: 1rem; position: relative; }
+.metric-card::before, .recommendation-card::before { background: var(--accent); content: ''; height: 3px; left: 0; position: absolute; right: 0; top: 0; }
+.metric-top { align-items: center; color: var(--muted); display: flex; font-size: 0.76rem; font-weight: 700; gap: 0.45rem; text-transform: uppercase; }
+.metric-top .material-icons-round { color: var(--accent); font-size: 1.15rem; }
+.metric-value { color: var(--text); font-size: clamp(1.25rem, 1.8vw, 1.75rem); font-weight: 800; margin-top: 0.8rem; overflow-wrap: anywhere; }
+.metric-caption { color: var(--muted); font-size: 0.82rem; margin-top: 0.25rem; }
+.section-header { align-items: center; display: flex; gap: 0.75rem; margin: 1.4rem 0 0.8rem; }
+.section-header > .material-icons-round { align-items: center; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; color: #38BDF8; display: inline-flex; height: 38px; justify-content: center; width: 38px; }
+.section-header h2 { color: var(--text) !important; -webkit-text-fill-color: var(--text) !important; background: none !important; font-size: 1.15rem !important; font-weight: 800 !important; margin: 0 !important; }
+.section-header p { color: var(--muted); font-size: 0.82rem; margin: 0.1rem 0 0; }
+.insight-card { align-items: flex-start; display: flex; gap: 0.9rem; margin-bottom: 0.8rem; min-height: 118px; padding: 1rem; }
+.insight-card.success { border-left: 4px solid #22C55E; } .insight-card.info { border-left: 4px solid #38BDF8; } .insight-card.warning { border-left: 4px solid #F59E0B; } .insight-card.danger { border-left: 4px solid #EF4444; }
+.insight-icon { align-items: center; border-radius: 8px; display: flex; flex: 0 0 40px; height: 40px; justify-content: center; }
+.insight-icon.success { background: rgba(34, 197, 94, 0.15); color: #22C55E; } .insight-icon.info { background: rgba(56, 189, 248, 0.15); color: #38BDF8; } .insight-icon.warning { background: rgba(245, 158, 11, 0.15); color: #F59E0B; } .insight-icon.danger { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+.insight-title, .recommendation-title { color: var(--text); font-size: 0.94rem; font-weight: 800; }
+.insight-text, .recommendation-card p { color: var(--text-soft); font-size: 0.86rem; line-height: 1.55; margin: 0.35rem 0 0; }
+.recommendation-card { margin-bottom: 0.8rem; min-height: 112px; overflow: hidden; padding: 1rem; position: relative; }
+.recommendation-title { align-items: center; display: flex; gap: 0.5rem; }
+.recommendation-title .material-icons-round { color: var(--accent); font-size: 1.2rem; }
+[data-testid="stPlotlyChart"], [data-testid="stDataFrame"] { background: rgba(15, 23, 42, 0.42); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stButton > button, .stDownloadButton > button { background: #38BDF8 !important; border: 1px solid rgba(125, 211, 252, 0.45) !important; border-radius: 8px !important; color: #031018 !important; font-weight: 800 !important; }
+.stButton > button:hover, .stDownloadButton > button:hover { background: #7DD3FC !important; border-color: #BAE6FD !important; }
+[data-baseweb="select"] > div, [data-testid="stDateInput"] input, [data-testid="stSidebar"] .stRadio label { background: rgba(15, 23, 42, 0.78) !important; border-color: var(--line) !important; border-radius: 8px !important; color: var(--text) !important; }
+[data-testid="stSidebar"] .stRadio label:hover { border-color: rgba(148, 163, 184, 0.28) !important; background: rgba(30, 41, 59, 0.78) !important; }
+hr { border-color: var(--line) !important; margin: 1rem 0 !important; }
+.footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 0.78rem; gap: 0.4rem; justify-content: center; margin-top: 2rem; padding: 1.2rem 0 0.2rem; }
+.footer .material-icons-round { color: #38BDF8; font-size: 1rem; }
+@media (max-width: 900px) { .page-hero { align-items: stretch; flex-direction: column; } .hero-source span { text-align: left; } .metric-card { min-height: 112px; } }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+COLORS = ["#38BDF8", "#22C55E", "#F59E0B", "#EF4444", "#A855F7", "#14B8A6", "#F97316", "#6366F1"]
 PLOTLY_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Inter, sans-serif", color="#E2E8F0", size=12),
-    margin=dict(l=40, r=20, t=50, b=40),
+    font=dict(family="Inter, sans-serif", color="#D8DEE9", size=12),
+    margin=dict(l=40, r=20, t=36, b=40),
     legend=dict(
-        bgcolor="rgba(26,31,46,0.7)",
-        bordercolor="rgba(255,255,255,0.08)",
+        bgcolor="rgba(15,23,42,0.72)",
+        bordercolor="rgba(148,163,184,0.18)",
         borderwidth=1,
         font=dict(size=11),
     ),
-    hoverlabel=dict(
-        bgcolor="#1A1F2E",
-        bordercolor="rgba(255,255,255,0.1)",
-        font=dict(family="Inter", size=12, color="#E2E8F0"),
-    ),
+    hoverlabel=dict(bgcolor="#111827", bordercolor="#334155", font=dict(color="#F8FAFC")),
 )
-
-COLOR_PALETTE = ["#667EEA", "#764BA2", "#F093FB", "#4FD1C5", "#34D399", "#FBBF24", "#FB7185", "#818CF8", "#A78BFA", "#F472B6"]
-GRADIENT_COLORS = ["#667EEA", "#7C6BD6", "#9258C2", "#A845AE", "#BE329A", "#D41F86"]
 
 
 def format_currency(value):
-    """Format value to Indian currency style."""
+    value = float(value) if pd.notna(value) else 0.0
     if abs(value) >= 1e7:
-        return f"₹{value / 1e7:.2f} Cr"
-    elif abs(value) >= 1e5:
-        return f"₹{value / 1e5:.2f} L"
-    elif abs(value) >= 1e3:
-        return f"₹{value / 1e3:.1f} K"
-    return f"₹{value:,.0f}"
+        return f"Rs {value / 1e7:.2f} Cr"
+    if abs(value) >= 1e5:
+        return f"Rs {value / 1e5:.2f} L"
+    if abs(value) >= 1e3:
+        return f"Rs {value / 1e3:.1f} K"
+    return f"Rs {value:,.0f}"
 
 
-def section_header(icon, title):
-    """Render a styled section header with Material Icon."""
+def chart_layout(fig, height=390, show_x_grid=False, show_y_grid=True):
+    fig.update_layout(**PLOTLY_LAYOUT, height=height)
+    fig.update_xaxes(showgrid=show_x_grid, gridcolor="rgba(148,163,184,0.14)")
+    fig.update_yaxes(showgrid=show_y_grid, gridcolor="rgba(148,163,184,0.14)")
+    return fig
+
+
+def section_header(icon, title, caption=None):
+    cap = f'<p>{caption}</p>' if caption else ""
     st.markdown(
         f"""
         <div class="section-header">
             <span class="material-icons-round">{icon}</span>
-            <h2>{title}</h2>
+            <div><h2>{title}</h2>{cap}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_card(icon, title, value, caption, color="#38BDF8"):
+    st.markdown(
+        f"""
+        <div class="metric-card" style="--accent:{color};">
+            <div class="metric-top"><span class="material-icons-round">{icon}</span><span>{title}</span></div>
+            <div class="metric-value">{value}</div>
+            <div class="metric-caption">{caption}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -112,57 +167,66 @@ def section_header(icon, title):
 
 
 def render_insight_card(insight):
-    """Render a styled insight card."""
     st.markdown(
         f"""
         <div class="insight-card {insight['type']}">
-            <div class="insight-icon {insight['type']}">
-                <span class="material-icons-round">{insight['icon']}</span>
-            </div>
-            <div>
-                <div class="insight-title">{insight['title']}</div>
-                <div class="insight-text">{insight['text']}</div>
-            </div>
+            <div class="insight-icon {insight['type']}"><span class="material-icons-round">{insight['icon']}</span></div>
+            <div><div class="insight-title">{insight['title']}</div><div class="insight-text">{insight['text']}</div></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-# ═══════════════════════════════════════════════
-# DATA LOADING
-# ═══════════════════════════════════════════════
+def render_recommendation(rec):
+    st.markdown(
+        f"""
+        <div class="recommendation-card" style="--accent:{rec['color']};">
+            <div class="recommendation-title"><span class="material-icons-round">{rec['icon']}</span><span>{rec['title']}</span></div>
+            <p>{rec['text']}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-@st.cache_data
-def load_data():
-    """Load and cache the sales data."""
-    return load_and_clean_data()
+
+@st.cache_data(show_spinner=False)
+def load_data(uploaded_bytes=None):
+    if uploaded_bytes is None:
+        return load_and_clean_data()
+    return load_and_clean_data(BytesIO(uploaded_bytes))
 
 
-df = load_data()
+uploaded_file = st.sidebar.file_uploader(
+    "Use your verified sales CSV",
+    type=["csv"],
+    help="Upload a real sales export with the same schema as data/sales_data.csv.",
+)
+uploaded_bytes = uploaded_file.getvalue() if uploaded_file else None
+data_source_label = uploaded_file.name if uploaded_file else "data/sales_data.csv"
 
-# ═══════════════════════════════════════════════
-# SIDEBAR
-# ═══════════════════════════════════════════════
+try:
+    df = load_data(uploaded_bytes)
+except Exception as exc:
+    st.error(f"Data could not be loaded: {exc}")
+    st.stop()
+
+quality = get_data_quality_summary(df)
 
 with st.sidebar:
     st.markdown(
         """
-        <div style="text-align:center; padding: 0.5rem 0 1rem 0;">
-            <span class="material-icons-round" style="font-size:2.5rem; background: linear-gradient(135deg, #667EEA, #764BA2); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">analytics</span>
-            <h1 style="margin:0.3rem 0 0 0; font-size:1.2rem;">Sales Analytics</h1>
-            <p style="color:#64748B; font-size:0.75rem; margin:0;">Business Intelligence Dashboard</p>
+        <div class="brand-block">
+            <span class="material-icons-round">analytics</span>
+            <h1>Sales Analytics</h1>
+            <p>Verified CSV business dashboard</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("---")
-
-    # Page navigation
-    st.markdown("## Navigation")
     page = st.radio(
-        "Select Page",
+        "Navigation",
         [
             "Overview",
             "Revenue & Trends",
@@ -171,972 +235,326 @@ with st.sidebar:
             "Customer Insights",
             "Business Insights",
         ],
-        label_visibility="collapsed",
     )
 
     st.markdown("---")
+    st.markdown("### Filters")
 
-    # Filters
-    st.markdown("## Filters")
-
-    # Year filter
     years = sorted(df["Year"].unique())
     selected_years = st.multiselect("Year", years, default=years)
 
-    # Region filter
+    min_date = df["Order_Date"].min().date()
+    max_date = df["Order_Date"].max().date()
+    date_range = st.date_input("Order date", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_date, end_date = date_range
+    else:
+        start_date, end_date = min_date, max_date
+
     regions = sorted(df["Region"].unique())
-    selected_regions = st.multiselect("Region", regions, default=regions)
-
-    # Category filter
     categories = sorted(df["Category"].unique())
-    selected_categories = st.multiselect("Category", categories, default=categories)
-
-    # Segment filter
     segments = sorted(df["Segment"].unique())
+
+    selected_regions = st.multiselect("Region", regions, default=regions)
+    selected_categories = st.multiselect("Category", categories, default=categories)
     selected_segments = st.multiselect("Segment", segments, default=segments)
 
-    st.markdown("---")
-
-    # Data info
     st.markdown(
         f"""
-        <div style="text-align:center; padding:0.5rem; background:rgba(102,126,234,0.08); border-radius:12px; border:1px solid rgba(102,126,234,0.15);">
-            <span class="material-icons-round" style="font-size:1.2rem; color:#667EEA;">storage</span>
-            <p style="margin:0.3rem 0 0 0; font-size:0.75rem; color:#94A3B8;">
-                <strong style="color:#E2E8F0;">{len(df):,}</strong> records loaded<br>
-                {df['Order_Date'].min().strftime('%b %Y')} — {df['Order_Date'].max().strftime('%b %Y')}
-            </p>
+        <div class="source-mini">
+            <span class="material-icons-round">dataset</span>
+            <strong>{quality['rows']:,}</strong> source rows<br>
+            <small>{data_source_label}</small><br>
+            <small>{quality['start_date'].strftime('%d %b %Y')} to {quality['end_date'].strftime('%d %b %Y')}</small>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-# ── Apply Filters ──
 filtered_df = df[
     (df["Year"].isin(selected_years))
+    & (df["Order_Date"] >= pd.to_datetime(start_date))
+    & (df["Order_Date"] <= pd.to_datetime(end_date))
     & (df["Region"].isin(selected_regions))
     & (df["Category"].isin(selected_categories))
     & (df["Segment"].isin(selected_segments))
 ]
 
 if filtered_df.empty:
-    st.warning("No data matches the current filter selection. Please adjust the filters.")
+    st.warning("No data matches the current filters. Please widen the filter selection.")
     st.stop()
 
-# Pre-compute metrics
 kpis = get_kpi_metrics(filtered_df)
+filtered_quality = get_data_quality_summary(filtered_df)
 
-# ═══════════════════════════════════════════════
-# PAGE: OVERVIEW
-# ═══════════════════════════════════════════════
+st.markdown(
+    f"""
+    <div class="page-hero">
+        <div>
+            <div class="eyebrow"><span class="material-icons-round">verified</span> Active source: {data_source_label}</div>
+            <h1>Sales Data Analysis & Business Insights</h1>
+            <p>Interactive dashboard for revenue, profit, products, customers, and regional performance. Upload a verified CSV or use the included CSV; no random rows are created at runtime.</p>
+        </div>
+        <div class="hero-source">
+            <span>{filtered_quality['orders']:,} orders</span>
+            <span>{filtered_quality['customers']:,} customers</span>
+            <span>{filtered_quality['cities']:,} cities</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 if page == "Overview":
-    # Header
-    st.markdown(
-        """
-        <div style="text-align:center; padding:1rem 0 0.5rem 0;">
-            <h1 style="font-size:2.4rem; margin-bottom:0.3rem;">Sales Analytics Dashboard</h1>
-            <p style="color:#94A3B8; font-size:0.95rem; font-weight:400;">
-                Real-time business intelligence · Revenue trends · Customer behavior · Actionable insights
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    cols = st.columns(4)
+    with cols[0]:
+        render_card("payments", "Total Revenue", format_currency(kpis["total_revenue"]), f"{kpis['total_orders']:,} orders", COLORS[0])
+    with cols[1]:
+        render_card("account_balance", "Total Profit", format_currency(kpis["total_profit"]), f"{kpis['profit_margin']:.1f}% margin", COLORS[1])
+    with cols[2]:
+        render_card("shopping_cart", "Avg Order Value", format_currency(kpis["avg_order_value"]), f"{int(kpis['total_quantity']):,} units sold", COLORS[2])
+    with cols[3]:
+        render_card("groups", "Unique Customers", f"{kpis['unique_customers']:,}", f"{kpis['avg_discount']:.1f}% avg discount", COLORS[4])
 
-    st.markdown("")
-
-    # ── KPI Row ──
-    kpi_cols = st.columns(4)
-    with kpi_cols[0]:
-        st.metric(
-            label="Total Revenue",
-            value=format_currency(kpis["total_revenue"]),
-            delta=f"{kpis['total_orders']:,} orders",
-        )
-    with kpi_cols[1]:
-        st.metric(
-            label="Total Profit",
-            value=format_currency(kpis["total_profit"]),
-            delta=f"{kpis['profit_margin']:.1f}% margin",
-        )
-    with kpi_cols[2]:
-        st.metric(
-            label="Avg Order Value",
-            value=format_currency(kpis["avg_order_value"]),
-            delta=f"{kpis['total_quantity']:,} units sold",
-        )
-    with kpi_cols[3]:
-        st.metric(
-            label="Unique Customers",
-            value=f"{kpis['unique_customers']:,}",
-            delta=f"{kpis['avg_discount']:.1f}% avg discount",
-        )
-
-    st.markdown("")
-
-    # ── Revenue Trend + Category Donut ──
-    col1, col2 = st.columns([2, 1])
-
+    col1, col2 = st.columns([1.65, 1])
     with col1:
-        section_header("trending_up", "Revenue Trend")
+        section_header("show_chart", "Revenue and Profit Trend", "Monthly movement from the filtered CSV records")
         monthly = get_monthly_trends(filtered_df)
-
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=monthly["Month_Label"],
-            y=monthly["Revenue"],
-            mode="lines+markers",
-            name="Revenue",
-            line=dict(color="#667EEA", width=3, shape="spline"),
-            marker=dict(size=6, color="#667EEA"),
-            fill="tonexty" if len(monthly) > 2 else None,
-            fillcolor="rgba(102,126,234,0.08)",
-            hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:,.0f}<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=monthly["Month_Label"],
-            y=monthly["Profit"],
-            mode="lines+markers",
-            name="Profit",
-            line=dict(color="#34D399", width=2, dash="dot", shape="spline"),
-            marker=dict(size=5, color="#34D399"),
-            hovertemplate="<b>%{x}</b><br>Profit: ₹%{y:,.0f}<extra></extra>",
-        ))
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            title=None,
-            height=380,
-            xaxis=dict(
-                showgrid=False,
-                tickangle=-45,
-                tickfont=dict(size=10),
-            ),
-            yaxis=dict(
-                showgrid=True,
-                gridcolor="rgba(255,255,255,0.04)",
-                tickformat=",",
-            ),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        fig.add_trace(go.Scatter(x=monthly["Month_Label"], y=monthly["Revenue"], mode="lines+markers", name="Revenue", line=dict(color=COLORS[0], width=3, shape="spline"), marker=dict(size=7), fill="tozeroy", fillcolor="rgba(56,189,248,0.10)", hovertemplate="%{x}<br>Revenue: Rs %{y:,.0f}<extra></extra>"))
+        fig.add_trace(go.Scatter(x=monthly["Month_Label"], y=monthly["Profit"], mode="lines+markers", name="Profit", line=dict(color=COLORS[1], width=3, shape="spline"), marker=dict(size=6), hovertemplate="%{x}<br>Profit: Rs %{y:,.0f}<extra></extra>"))
+        fig.update_xaxes(tickangle=-35)
+        st.plotly_chart(chart_layout(fig, 410), use_container_width=True)
 
     with col2:
-        section_header("donut_large", "Revenue by Category")
+        section_header("donut_large", "Revenue Mix", "Category contribution")
         cat_perf = get_category_performance(filtered_df)
-
-        fig = go.Figure(data=[go.Pie(
-            labels=cat_perf["Category"],
-            values=cat_perf["Revenue"],
-            hole=0.55,
-            marker=dict(colors=COLOR_PALETTE[:len(cat_perf)]),
-            textinfo="label+percent",
-            textfont=dict(size=11, color="#E2E8F0"),
-            hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            title=None,
-            height=380,
-            showlegend=False,
-            annotations=[dict(
-                text=format_currency(kpis["total_revenue"]),
-                x=0.5, y=0.5,
-                font=dict(size=16, color="#E2E8F0", family="Outfit"),
-                showarrow=False,
-            )],
-        )
+        fig = go.Figure(go.Pie(labels=cat_perf["Category"], values=cat_perf["Revenue"], hole=0.58, marker=dict(colors=COLORS), textinfo="label+percent", hovertemplate="%{label}<br>Revenue: Rs %{value:,.0f}<extra></extra>"))
+        fig.update_layout(**PLOTLY_LAYOUT, height=410, showlegend=False, annotations=[dict(text=format_currency(kpis["total_revenue"]), x=0.5, y=0.5, showarrow=False, font=dict(size=18, color="#F8FAFC"))])
         st.plotly_chart(fig, use_container_width=True)
 
-    # ── Regional Performance + Top Products ──
     col3, col4 = st.columns(2)
-
     with col3:
-        section_header("map", "Regional Performance")
+        section_header("map", "Regional Revenue", "Where sales are strongest")
         regional = get_regional_analysis(filtered_df)
-
-        fig = go.Figure(data=[go.Bar(
-            x=regional["Region"],
-            y=regional["Revenue"],
-            marker=dict(
-                color=regional["Revenue"],
-                colorscale=[[0, "#667EEA"], [0.5, "#764BA2"], [1, "#F093FB"]],
-                cornerradius=6,
-            ),
-            text=[format_currency(v) for v in regional["Revenue"]],
-            textposition="outside",
-            textfont=dict(size=11, color="#E2E8F0"),
-            hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            title=None,
-            height=350,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure(go.Bar(x=regional["Region"], y=regional["Revenue"], marker=dict(color=regional["Revenue"], colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[0]]]), text=[format_currency(v) for v in regional["Revenue"]], textposition="outside", hovertemplate="%{x}<br>Revenue: Rs %{y:,.0f}<extra></extra>"))
+        st.plotly_chart(chart_layout(fig, 360), use_container_width=True)
 
     with col4:
-        section_header("inventory_2", "Top 10 Products by Revenue")
+        section_header("inventory_2", "Top Products", "Ranked by revenue")
         top_products = get_top_products(filtered_df, n=10, metric="Revenue")
-
-        fig = go.Figure(data=[go.Bar(
-            y=top_products["Product_Name"],
-            x=top_products["Revenue"],
-            orientation="h",
-            marker=dict(
-                color=top_products["Revenue"],
-                colorscale=[[0, "#4FD1C5"], [0.5, "#667EEA"], [1, "#764BA2"]],
-                cornerradius=4,
-            ),
-            text=[format_currency(v) for v in top_products["Revenue"]],
-            textposition="outside",
-            textfont=dict(size=10, color="#94A3B8"),
-            hovertemplate="<b>%{y}</b><br>Revenue: ₹%{x:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            title=None,
-            height=350,
-            yaxis=dict(autorange="reversed", tickfont=dict(size=10)),
-            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE: REVENUE & TRENDS
-# ═══════════════════════════════════════════════
+        fig = go.Figure(go.Bar(y=top_products["Product_Name"], x=top_products["Revenue"], orientation="h", marker=dict(color=top_products["Revenue"], colorscale=[[0, COLORS[5]], [1, COLORS[0]]]), text=[format_currency(v) for v in top_products["Revenue"]], textposition="outside", hovertemplate="%{y}<br>Revenue: Rs %{x:,.0f}<extra></extra>"))
+        fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
+        st.plotly_chart(chart_layout(fig, 360), use_container_width=True)
 
 elif page == "Revenue & Trends":
-    st.markdown('<h1 style="text-align:center;">Revenue & Trends Analysis</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#94A3B8;">Deep dive into revenue patterns, seasonal trends, and year-over-year growth</p>', unsafe_allow_html=True)
-    st.markdown("")
-
     monthly = get_monthly_trends(filtered_df)
     yoy = get_yoy_growth(filtered_df)
+    quarterly = get_seasonal_analysis(filtered_df)
 
-    # ── YoY KPIs ──
+    cols = st.columns(4)
     if len(yoy) > 1:
-        yoy_cols = st.columns(4)
-        latest = yoy.iloc[-1]
-        prev = yoy.iloc[-2]
-        with yoy_cols[0]:
-            st.metric(f"Revenue {int(latest['Year'])}", format_currency(latest["Revenue"]),
-                      delta=f"{latest['Revenue_Growth']:.1f}% YoY" if not pd.isna(latest["Revenue_Growth"]) else "N/A")
-        with yoy_cols[1]:
-            st.metric(f"Profit {int(latest['Year'])}", format_currency(latest["Profit"]),
-                      delta=f"{latest['Profit_Growth']:.1f}% YoY" if not pd.isna(latest["Profit_Growth"]) else "N/A")
-        with yoy_cols[2]:
-            st.metric(f"Revenue {int(prev['Year'])}", format_currency(prev["Revenue"]))
-        with yoy_cols[3]:
-            st.metric(f"Profit {int(prev['Year'])}", format_currency(prev["Profit"]))
+        latest, previous = yoy.iloc[-1], yoy.iloc[-2]
+        with cols[0]:
+            render_card("trending_up", f"Revenue {int(latest['Year'])}", format_currency(latest["Revenue"]), f"{latest['Revenue_Growth']:.1f}% YoY", COLORS[0])
+        with cols[1]:
+            render_card("savings", f"Profit {int(latest['Year'])}", format_currency(latest["Profit"]), f"{latest['Profit_Growth']:.1f}% YoY", COLORS[1])
+        with cols[2]:
+            render_card("history", f"Revenue {int(previous['Year'])}", format_currency(previous["Revenue"]), f"{int(previous['Orders']):,} orders", COLORS[2])
+        with cols[3]:
+            render_card("person", "Customers", f"{int(latest['Customers']):,}", "latest selected year", COLORS[4])
+    else:
+        with cols[0]:
+            render_card("trending_up", "Revenue", format_currency(kpis["total_revenue"]), "single-year selection", COLORS[0])
+        with cols[1]:
+            render_card("savings", "Profit", format_currency(kpis["total_profit"]), f"{kpis['profit_margin']:.1f}% margin", COLORS[1])
 
-    st.markdown("")
-
-    # ── Monthly Revenue with Cumulative ──
-    section_header("show_chart", "Monthly Revenue & Cumulative Growth")
-
+    section_header("stacked_line_chart", "Monthly Revenue and Cumulative Revenue", "Trend and running total")
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(
-        go.Bar(
-            x=monthly["Month_Label"],
-            y=monthly["Revenue"],
-            name="Monthly Revenue",
-            marker=dict(
-                color=monthly["Revenue"],
-                colorscale=[[0, "#667EEA"], [1, "#764BA2"]],
-                cornerradius=4,
-            ),
-            hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:,.0f}<extra></extra>",
-        ),
-        secondary_y=False,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=monthly["Month_Label"],
-            y=monthly["Cumulative_Revenue"],
-            name="Cumulative Revenue",
-            line=dict(color="#FBBF24", width=3, shape="spline"),
-            mode="lines",
-            hovertemplate="<b>%{x}</b><br>Cumulative: ₹%{y:,.0f}<extra></extra>",
-        ),
-        secondary_y=True,
-    )
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=420,
-        xaxis=dict(showgrid=False, tickangle=-45, tickfont=dict(size=10)),
-        yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=",", title="Monthly Revenue"),
-        yaxis2=dict(showgrid=False, tickformat=",", title="Cumulative"),
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    fig.add_trace(go.Bar(x=monthly["Month_Label"], y=monthly["Revenue"], name="Monthly Revenue", marker=dict(color=COLORS[0]), hovertemplate="%{x}<br>Revenue: Rs %{y:,.0f}<extra></extra>"), secondary_y=False)
+    fig.add_trace(go.Scatter(x=monthly["Month_Label"], y=monthly["Cumulative_Revenue"], name="Cumulative Revenue", line=dict(color=COLORS[2], width=3), hovertemplate="%{x}<br>Cumulative: Rs %{y:,.0f}<extra></extra>"), secondary_y=True)
+    fig.update_xaxes(tickangle=-35)
+    fig.update_yaxes(title_text="Monthly", secondary_y=False)
+    fig.update_yaxes(title_text="Cumulative", secondary_y=True, showgrid=False)
+    st.plotly_chart(chart_layout(fig, 430), use_container_width=True)
 
-    # ── 3D Surface: Revenue × Month × Category ──
-    section_header("view_in_ar", "3D Revenue Surface — Month × Category")
-
-    surface_data = get_3d_surface_data(filtered_df)
-    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    categories_list = surface_data.columns.tolist()
-
-    fig = go.Figure(data=[go.Surface(
-        z=surface_data.values,
-        x=list(range(len(categories_list))),
-        y=surface_data.index.tolist(),
-        colorscale=[
-            [0, "#0E1117"],
-            [0.2, "#1A1F3D"],
-            [0.4, "#667EEA"],
-            [0.6, "#764BA2"],
-            [0.8, "#F093FB"],
-            [1, "#FB7185"],
-        ],
-        contours=dict(
-            z=dict(show=True, usecolormap=True, highlightcolor="limegreen", project_z=True),
-        ),
-        opacity=0.92,
-        hovertemplate="Category: %{x}<br>Month: %{y}<br>Revenue: ₹%{z:,.0f}<extra></extra>",
-    )])
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=550,
-        scene=dict(
-            xaxis=dict(
-                title="Category",
-                tickvals=list(range(len(categories_list))),
-                ticktext=categories_list,
-                backgroundcolor="rgba(0,0,0,0)",
-                gridcolor="rgba(255,255,255,0.06)",
-                color="#94A3B8",
-            ),
-            yaxis=dict(
-                title="Month",
-                tickvals=list(range(1, 13)),
-                ticktext=month_names,
-                backgroundcolor="rgba(0,0,0,0)",
-                gridcolor="rgba(255,255,255,0.06)",
-                color="#94A3B8",
-            ),
-            zaxis=dict(
-                title="Revenue (₹)",
-                backgroundcolor="rgba(0,0,0,0)",
-                gridcolor="rgba(255,255,255,0.06)",
-                color="#94A3B8",
-            ),
-            bgcolor="rgba(0,0,0,0)",
-            camera=dict(eye=dict(x=1.8, y=1.8, z=1.2)),
-        ),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ── Seasonal / Quarterly Analysis ──
     col1, col2 = st.columns(2)
-
     with col1:
         section_header("calendar_month", "Quarterly Performance")
-        quarterly = get_seasonal_analysis(filtered_df)
-
-        fig = go.Figure(data=[go.Bar(
-            x=quarterly["Quarter_Label"],
-            y=quarterly["Revenue"],
-            marker=dict(
-                color=quarterly["Revenue"],
-                colorscale=[[0, "#4FD1C5"], [0.5, "#667EEA"], [1, "#F093FB"]],
-                cornerradius=6,
-            ),
-            text=[format_currency(v) for v in quarterly["Revenue"]],
-            textposition="outside",
-            textfont=dict(size=10, color="#94A3B8"),
-            hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            height=350,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
+        fig = go.Figure(go.Bar(x=quarterly["Quarter_Label"], y=quarterly["Revenue"], marker=dict(color=quarterly["Profit_Margin"], colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]]), text=[format_currency(v) for v in quarterly["Revenue"]], textposition="outside", hovertemplate="%{x}<br>Revenue: Rs %{y:,.0f}<extra></extra>"))
+        st.plotly_chart(chart_layout(fig, 360), use_container_width=True)
     with col2:
-        section_header("waterfall_chart", "Monthly Growth Rate")
+        section_header("waterfall_chart", "Month-over-Month Growth")
+        growth = monthly["Revenue_Growth"].fillna(0)
+        fig = go.Figure(go.Bar(x=monthly["Month_Label"], y=growth, marker=dict(color=[COLORS[1] if v >= 0 else COLORS[3] for v in growth]), hovertemplate="%{x}<br>Growth: %{y:.1f}%<extra></extra>"))
+        fig.update_xaxes(tickangle=-35)
+        fig.update_yaxes(title="Growth %")
+        st.plotly_chart(chart_layout(fig, 360), use_container_width=True)
 
-        fig = go.Figure(data=[go.Bar(
-            x=monthly["Month_Label"],
-            y=monthly["Revenue_Growth"].fillna(0),
-            marker=dict(
-                color=[
-                    "#34D399" if v >= 0 else "#FB7185"
-                    for v in monthly["Revenue_Growth"].fillna(0)
-                ],
-                cornerradius=4,
-            ),
-            hovertemplate="<b>%{x}</b><br>Growth: %{y:.1f}%<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            height=350,
-            xaxis=dict(showgrid=False, tickangle=-45, tickfont=dict(size=9)),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", title="Growth %"),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE: REGIONAL ANALYSIS
-# ═══════════════════════════════════════════════
+    section_header("view_in_ar", "3D Revenue Surface", "Month by category revenue")
+    surface = get_3d_surface_data(filtered_df)
+    fig = go.Figure(go.Surface(z=surface.values, x=list(range(len(surface.columns))), y=surface.index.tolist(), colorscale=[[0, "#0F172A"], [0.35, COLORS[0]], [0.7, COLORS[2]], [1, COLORS[3]]], opacity=0.94, hovertemplate="Category index: %{x}<br>Month: %{y}<br>Revenue: Rs %{z:,.0f}<extra></extra>"))
+    fig.update_layout(**PLOTLY_LAYOUT, height=520, scene=dict(xaxis=dict(title="Category", tickvals=list(range(len(surface.columns))), ticktext=surface.columns.tolist(), color="#CBD5E1"), yaxis=dict(title="Month", color="#CBD5E1"), zaxis=dict(title="Revenue", color="#CBD5E1"), bgcolor="rgba(0,0,0,0)", camera=dict(eye=dict(x=1.6, y=1.8, z=1.1))))
+    st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Regional Analysis":
-    st.markdown('<h1 style="text-align:center;">Regional Analysis</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#94A3B8;">Geographic breakdown of sales performance across India</p>', unsafe_allow_html=True)
-    st.markdown("")
-
     regional = get_regional_analysis(filtered_df)
     city_data = get_city_analysis(filtered_df, top_n=15)
+    region_colors = {region: COLORS[i % len(COLORS)] for i, region in enumerate(regional["Region"])}
 
-    # ── Region KPIs ──
     reg_cols = st.columns(len(regional))
-    region_colors = {"North": "#667EEA", "South": "#34D399", "West": "#FBBF24", "East": "#FB7185"}
-    for i, row in regional.iterrows():
-        with reg_cols[list(regional.index).index(i)]:
-            color = region_colors.get(row["Region"], "#667EEA")
-            st.markdown(
-                f"""
-                <div style="background:rgba(26,31,46,0.65); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08);
-                            border-radius:16px; padding:1.2rem; text-align:center; border-top:3px solid {color};">
-                    <p style="color:#94A3B8; font-size:0.8rem; margin:0; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">
-                        {row['Region']} Region
-                    </p>
-                    <p style="font-family:Outfit; font-size:1.5rem; font-weight:800; color:#E2E8F0; margin:0.4rem 0;">
-                        {format_currency(row['Revenue'])}
-                    </p>
-                    <p style="color:{color}; font-size:0.8rem; margin:0;">{row['Profit_Margin']:.1f}% margin · {row['Orders']} orders</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+    for i, (_, row) in enumerate(regional.iterrows()):
+        with reg_cols[i]:
+            render_card("public", row["Region"], format_currency(row["Revenue"]), f"{row['Profit_Margin']:.1f}% margin | {int(row['Orders']):,} orders", region_colors[row["Region"]])
 
-    st.markdown("")
+    section_header("grid_on", "Category Margin by Region", "Profit margin calculated as total profit divided by total revenue")
+    heatmap = get_profit_margin_heatmap_data(filtered_df)
+    fig = go.Figure(go.Heatmap(z=heatmap.values, x=heatmap.columns, y=heatmap.index, colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]], text=[[f"{v:.1f}%" for v in row] for row in heatmap.values], texttemplate="%{text}", hovertemplate="%{y} / %{x}<br>Margin: %{z:.1f}%<extra></extra>"))
+    st.plotly_chart(chart_layout(fig, 390, show_x_grid=False, show_y_grid=False), use_container_width=True)
 
-    # ── 3D Bar Chart: City × Category × Revenue ──
-    section_header("view_in_ar", "3D City Performance — Revenue by Category")
-
-    bar_3d = get_3d_bar_data(filtered_df)
-    cities_list = bar_3d.index.tolist()
-    cat_list = bar_3d.columns.tolist()
-
-    fig = go.Figure()
-    for j, cat in enumerate(cat_list):
-        for i, city in enumerate(cities_list):
-            val = bar_3d.loc[city, cat]
-            if val > 0:
-                fig.add_trace(go.Scatter3d(
-                    x=[i], y=[j], z=[val],
-                    mode="markers",
-                    marker=dict(
-                        size=max(4, min(18, val / bar_3d.values.max() * 18)),
-                        color=COLOR_PALETTE[j % len(COLOR_PALETTE)],
-                        opacity=0.85,
-                        symbol="diamond",
-                    ),
-                    name=f"{city} - {cat}",
-                    showlegend=False,
-                    hovertemplate=f"<b>{city}</b><br>{cat}<br>Revenue: ₹{val:,.0f}<extra></extra>",
-                ))
-
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=550,
-        scene=dict(
-            xaxis=dict(title="City", tickvals=list(range(len(cities_list))), ticktext=cities_list,
-                       backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            yaxis=dict(title="Category", tickvals=list(range(len(cat_list))), ticktext=cat_list,
-                       backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            zaxis=dict(title="Revenue (₹)", backgroundcolor="rgba(0,0,0,0)",
-                       gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            bgcolor="rgba(0,0,0,0)",
-            camera=dict(eye=dict(x=2.0, y=1.5, z=1.0)),
-        ),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ── City Performance Table + Radar Chart ──
     col1, col2 = st.columns([1.2, 1])
-
     with col1:
-        section_header("apartment", "Top Cities by Revenue")
-        city_display = city_data[["City", "State", "Region", "Revenue", "Profit", "Orders", "Profit_Margin"]].copy()
-        city_display["Revenue"] = city_display["Revenue"].apply(lambda x: f"₹{x:,.0f}")
-        city_display["Profit"] = city_display["Profit"].apply(lambda x: f"₹{x:,.0f}")
-        city_display["Profit_Margin"] = city_display["Profit_Margin"].apply(lambda x: f"{x:.1f}%")
-        st.dataframe(city_display, use_container_width=True, hide_index=True)
-
+        section_header("apartment", "Top Cities", "Sorted by revenue")
+        city_display = city_data.copy()
+        city_display["Revenue"] = city_display["Revenue"].apply(format_currency)
+        city_display["Profit"] = city_display["Profit"].apply(format_currency)
+        city_display["Profit_Margin"] = city_display["Profit_Margin"].map(lambda x: f"{x:.1f}%")
+        st.dataframe(city_display[["City", "State", "Region", "Revenue", "Profit", "Orders", "Profit_Margin"]], use_container_width=True, hide_index=True)
     with col2:
-        section_header("radar", "Region Comparison — Radar")
+        section_header("radar", "Region Comparison")
         radar_cats = ["Revenue", "Profit", "Orders", "Quantity"]
-
         fig = go.Figure()
         for _, row in regional.iterrows():
-            values = [
-                row["Revenue"] / regional["Revenue"].max(),
-                row["Profit"] / regional["Profit"].max(),
-                row["Orders"] / regional["Orders"].max(),
-                row["Quantity"] / regional["Quantity"].max(),
-            ]
-            values.append(values[0])  # Close the polygon
-            fig.add_trace(go.Scatterpolar(
-                r=values,
-                theta=radar_cats + [radar_cats[0]],
-                name=row["Region"],
-                line=dict(color=region_colors.get(row["Region"], "#667EEA"), width=2),
-                fill="toself",
-                fillcolor=region_colors.get(row["Region"], "#667EEA").replace(")", ",0.1)").replace("rgb", "rgba") if "rgb" in region_colors.get(row["Region"], "") else f"rgba(102,126,234,0.1)",
-                opacity=0.8,
-            ))
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            height=400,
-            polar=dict(
-                bgcolor="rgba(0,0,0,0)",
-                radialaxis=dict(visible=True, range=[0, 1.1], showticklabels=False, gridcolor="rgba(255,255,255,0.06)"),
-                angularaxis=dict(gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            ),
-        )
+            values = [row[c] / regional[c].max() if regional[c].max() else 0 for c in radar_cats]
+            values.append(values[0])
+            fig.add_trace(go.Scatterpolar(r=values, theta=radar_cats + [radar_cats[0]], name=row["Region"], fill="toself", line=dict(color=region_colors[row["Region"]])))
+        fig.update_layout(**PLOTLY_LAYOUT, height=390, polar=dict(bgcolor="rgba(0,0,0,0)", radialaxis=dict(visible=True, range=[0, 1.1], showticklabels=False, gridcolor="rgba(148,163,184,0.16)")))
         st.plotly_chart(fig, use_container_width=True)
 
-
-# ═══════════════════════════════════════════════
-# PAGE: PRODUCT PERFORMANCE
-# ═══════════════════════════════════════════════
+    section_header("view_in_ar", "3D City Category Revenue", "Top city/category combinations")
+    bar_3d = get_3d_bar_data(filtered_df)
+    fig = go.Figure()
+    max_val = bar_3d.values.max() if bar_3d.size else 1
+    for j, cat in enumerate(bar_3d.columns):
+        for i, city in enumerate(bar_3d.index):
+            value = bar_3d.loc[city, cat]
+            if value > 0:
+                fig.add_trace(go.Scatter3d(x=[i], y=[j], z=[value], mode="markers", marker=dict(size=max(5, min(20, value / max_val * 20)), color=COLORS[j % len(COLORS)], opacity=0.85), showlegend=False, hovertemplate=f"{city}<br>{cat}<br>Revenue: Rs {value:,.0f}<extra></extra>"))
+    fig.update_layout(**PLOTLY_LAYOUT, height=510, scene=dict(xaxis=dict(title="City", tickvals=list(range(len(bar_3d.index))), ticktext=bar_3d.index.tolist(), color="#CBD5E1"), yaxis=dict(title="Category", tickvals=list(range(len(bar_3d.columns))), ticktext=bar_3d.columns.tolist(), color="#CBD5E1"), zaxis=dict(title="Revenue", color="#CBD5E1"), bgcolor="rgba(0,0,0,0)"))
+    st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Product Performance":
-    st.markdown('<h1 style="text-align:center;">Product Performance</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#94A3B8;">Product-level analysis, category breakdown, and pricing insights</p>', unsafe_allow_html=True)
-    st.markdown("")
-
-    # ── Top & Bottom Products ──
     col1, col2 = st.columns(2)
-
     with col1:
-        section_header("trending_up", "Top 10 Products — Revenue")
+        section_header("trending_up", "Top 10 Products")
         top_10 = get_top_products(filtered_df, n=10, metric="Revenue")
-
-        fig = go.Figure(data=[go.Bar(
-            y=top_10["Product_Name"],
-            x=top_10["Revenue"],
-            orientation="h",
-            marker=dict(
-                color=top_10["Revenue"],
-                colorscale=[[0, "#34D399"], [0.5, "#4FD1C5"], [1, "#667EEA"]],
-                cornerradius=4,
-            ),
-            text=[format_currency(v) for v in top_10["Revenue"]],
-            textposition="outside",
-            textfont=dict(size=9, color="#94A3B8"),
-            hovertemplate="<b>%{y}</b><br>Revenue: ₹%{x:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT, height=400,
-            yaxis=dict(autorange="reversed", tickfont=dict(size=9)),
-            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
+        fig = go.Figure(go.Bar(y=top_10["Product_Name"], x=top_10["Revenue"], orientation="h", marker=dict(color=top_10["Profit_Margin"], colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]]), text=[format_currency(v) for v in top_10["Revenue"]], textposition="outside", hovertemplate="%{y}<br>Revenue: Rs %{x:,.0f}<extra></extra>"))
+        fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
+        st.plotly_chart(chart_layout(fig, 405), use_container_width=True)
     with col2:
-        section_header("trending_down", "Bottom 10 Products — Revenue")
+        section_header("trending_down", "Bottom 10 Products")
         bottom_10 = get_top_products(filtered_df, n=10, metric="Revenue", ascending=True)
+        fig = go.Figure(go.Bar(y=bottom_10["Product_Name"], x=bottom_10["Revenue"], orientation="h", marker=dict(color=bottom_10["Profit_Margin"], colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]]), text=[format_currency(v) for v in bottom_10["Revenue"]], textposition="outside", hovertemplate="%{y}<br>Revenue: Rs %{x:,.0f}<extra></extra>"))
+        fig.update_yaxes(autorange="reversed", tickfont=dict(size=10))
+        st.plotly_chart(chart_layout(fig, 405), use_container_width=True)
 
-        fig = go.Figure(data=[go.Bar(
-            y=bottom_10["Product_Name"],
-            x=bottom_10["Revenue"],
-            orientation="h",
-            marker=dict(
-                color=bottom_10["Revenue"],
-                colorscale=[[0, "#FB7185"], [0.5, "#F093FB"], [1, "#764BA2"]],
-                cornerradius=4,
-            ),
-            text=[format_currency(v) for v in bottom_10["Revenue"]],
-            textposition="outside",
-            textfont=dict(size=9, color="#94A3B8"),
-            hovertemplate="<b>%{y}</b><br>Revenue: ₹%{x:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT, height=400,
-            yaxis=dict(autorange="reversed", tickfont=dict(size=9)),
-            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ── Category Treemap ──
-    section_header("account_tree", "Category & Sub-Category Treemap")
+    section_header("account_tree", "Category and Sub-Category Treemap", "Size is revenue, color is profit margin")
     sub_perf = get_subcategory_performance(filtered_df)
-
-    fig = px.treemap(
-        sub_perf,
-        path=["Category", "Sub_Category"],
-        values="Revenue",
-        color="Profit_Margin",
-        color_continuous_scale=[[0, "#FB7185"], [0.3, "#764BA2"], [0.5, "#667EEA"], [0.7, "#4FD1C5"], [1, "#34D399"]],
-        color_continuous_midpoint=sub_perf["Profit_Margin"].median(),
-        hover_data={"Revenue": ":,.0f", "Profit": ":,.0f", "Profit_Margin": ":.1f"},
-    )
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=450,
-        coloraxis_colorbar=dict(title="Margin %", tickfont=dict(color="#94A3B8"), titlefont=dict(color="#94A3B8")),
-    )
-    fig.update_traces(
-        textfont=dict(color="#E2E8F0", size=12),
-        hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Margin: %{color:.1f}%<extra></extra>",
-    )
+    fig = px.treemap(sub_perf, path=["Category", "Sub_Category"], values="Revenue", color="Profit_Margin", color_continuous_scale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]], hover_data={"Revenue": ":,.0f", "Profit": ":,.0f", "Profit_Margin": ":.1f"})
+    fig.update_layout(**PLOTLY_LAYOUT, height=440, coloraxis_colorbar=dict(title="Margin %"))
+    fig.update_traces(hovertemplate="%{label}<br>Revenue: Rs %{value:,.0f}<br>Margin: %{color:.1f}%<extra></extra>")
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── 3D Scatter: Quantity × Price × Profit ──
-    section_header("bubble_chart", "3D Product Analysis — Quantity × Price × Profit")
-
+    section_header("bubble_chart", "3D Product Analysis", "Quantity, average unit price, and profit")
     scatter_data = get_3d_scatter_data(filtered_df)
-
     fig = go.Figure()
-    for cat in scatter_data["Category"].unique():
+    categories = scatter_data["Category"].unique().tolist()
+    for idx, cat in enumerate(categories):
         cat_df = scatter_data[scatter_data["Category"] == cat]
-        idx = list(scatter_data["Category"].unique()).index(cat)
-        fig.add_trace(go.Scatter3d(
-            x=cat_df["Quantity"],
-            y=cat_df["Avg_Price"],
-            z=cat_df["Profit"],
-            mode="markers",
-            name=cat,
-            marker=dict(
-                size=np.clip(cat_df["Revenue"] / cat_df["Revenue"].max() * 16, 4, 20),
-                color=COLOR_PALETTE[idx % len(COLOR_PALETTE)],
-                opacity=0.8,
-                line=dict(width=1, color="rgba(255,255,255,0.2)"),
-            ),
-            text=cat_df["Product_Name"],
-            hovertemplate="<b>%{text}</b><br>Qty: %{x}<br>Avg Price: ₹%{y:,.0f}<br>Profit: ₹%{z:,.0f}<extra></extra>",
-        ))
-
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=550,
-        scene=dict(
-            xaxis=dict(title="Quantity Sold", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            yaxis=dict(title="Avg Unit Price (₹)", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            zaxis=dict(title="Total Profit (₹)", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            bgcolor="rgba(0,0,0,0)",
-            camera=dict(eye=dict(x=1.6, y=1.6, z=1.2)),
-        ),
-    )
+        size_base = cat_df["Revenue"].max() or 1
+        fig.add_trace(go.Scatter3d(x=cat_df["Quantity"], y=cat_df["Avg_Price"], z=cat_df["Profit"], mode="markers", name=cat, marker=dict(size=np.clip(cat_df["Revenue"] / size_base * 16, 5, 20), color=COLORS[idx % len(COLORS)], opacity=0.82, line=dict(width=1, color="rgba(255,255,255,0.25)")), text=cat_df["Product_Name"], hovertemplate="%{text}<br>Qty: %{x}<br>Avg Price: Rs %{y:,.0f}<br>Profit: Rs %{z:,.0f}<extra></extra>"))
+    fig.update_layout(**PLOTLY_LAYOUT, height=530, scene=dict(xaxis=dict(title="Quantity", color="#CBD5E1"), yaxis=dict(title="Avg Unit Price", color="#CBD5E1"), zaxis=dict(title="Profit", color="#CBD5E1"), bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig, use_container_width=True)
-
-
-# ═══════════════════════════════════════════════
-# PAGE: CUSTOMER INSIGHTS
-# ═══════════════════════════════════════════════
 
 elif page == "Customer Insights":
-    st.markdown('<h1 style="text-align:center;">Customer Insights</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#94A3B8;">Customer segmentation, payment behavior, and purchasing patterns</p>', unsafe_allow_html=True)
-    st.markdown("")
-
     segments = get_customer_segments(filtered_df)
     payment = get_payment_analysis(filtered_df)
-
-    # ── Segment KPIs ──
     seg_cols = st.columns(len(segments))
-    seg_colors = {"Consumer": "#667EEA", "Corporate": "#34D399", "Home Office": "#FBBF24"}
     for i, (_, row) in enumerate(segments.iterrows()):
         with seg_cols[i]:
-            color = seg_colors.get(row["Segment"], "#667EEA")
-            st.markdown(
-                f"""
-                <div style="background:rgba(26,31,46,0.65); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08);
-                            border-radius:16px; padding:1.2rem; text-align:center; border-top:3px solid {color};">
-                    <p style="color:#94A3B8; font-size:0.75rem; margin:0; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;">
-                        {row['Segment']}
-                    </p>
-                    <p style="font-family:Outfit; font-size:1.4rem; font-weight:800; color:#E2E8F0; margin:0.3rem 0;">
-                        {format_currency(row['Revenue'])}
-                    </p>
-                    <p style="color:{color}; font-size:0.75rem; margin:0;">
-                        {row['Revenue_Share']:.1f}% share · {row['Customers']} customers · {row['Profit_Margin']:.1f}% margin
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            render_card("group", row["Segment"], format_currency(row["Revenue"]), f"{row['Revenue_Share']:.1f}% share | {row['Customers']} customers", COLORS[i % len(COLORS)])
 
-    st.markdown("")
-
-    # ── Payment + Shipping ──
     col1, col2 = st.columns(2)
-
     with col1:
         section_header("payments", "Payment Mode Distribution")
-
-        fig = go.Figure(data=[go.Pie(
-            labels=payment["Payment_Mode"],
-            values=payment["Revenue"],
-            hole=0.5,
-            marker=dict(colors=COLOR_PALETTE[:len(payment)]),
-            textinfo="label+percent",
-            textfont=dict(size=11, color="#E2E8F0"),
-            hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            height=380,
-            showlegend=True,
-            legend=dict(orientation="h", y=-0.1),
-        )
+        fig = go.Figure(go.Pie(labels=payment["Payment_Mode"], values=payment["Revenue"], hole=0.55, marker=dict(colors=COLORS), textinfo="label+percent", hovertemplate="%{label}<br>Revenue: Rs %{value:,.0f}<extra></extra>"))
+        fig.update_layout(**PLOTLY_LAYOUT, height=390)
         st.plotly_chart(fig, use_container_width=True)
-
     with col2:
-        section_header("local_shipping", "Shipping Mode Analysis")
+        section_header("local_shipping", "Shipping Revenue")
         shipping = get_shipping_analysis(filtered_df)
+        fig = go.Figure(go.Bar(x=shipping["Ship_Mode"], y=shipping["Revenue"], marker=dict(color=shipping["Revenue"], colorscale=[[0, COLORS[5]], [1, COLORS[0]]]), text=[format_currency(v) for v in shipping["Revenue"]], textposition="outside", hovertemplate="%{x}<br>Revenue: Rs %{y:,.0f}<extra></extra>"))
+        st.plotly_chart(chart_layout(fig, 390), use_container_width=True)
 
-        fig = go.Figure(data=[go.Bar(
-            x=shipping["Ship_Mode"],
-            y=shipping["Revenue"],
-            marker=dict(
-                color=shipping["Revenue"],
-                colorscale=[[0, "#4FD1C5"], [1, "#667EEA"]],
-                cornerradius=6,
-            ),
-            text=[f"{format_currency(v)}\n({s:.0f}%)" for v, s in zip(shipping["Revenue"], shipping["Revenue_Share"])],
-            textposition="outside",
-            textfont=dict(size=10, color="#94A3B8"),
-            hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:,.0f}<extra></extra>",
-        )])
-        fig.update_layout(
-            **PLOTLY_LAYOUT,
-            height=380,
-            xaxis=dict(showgrid=False),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ── 3D Bubble: Segments × Revenue × Profit ──
-    section_header("view_in_ar", "3D Customer Segment Analysis")
-
-    seg_data = filtered_df.groupby(["Segment", "Category"]).agg(
-        Revenue=("Revenue", "sum"),
-        Profit=("Profit", "sum"),
-        Orders=("Order_ID", "nunique"),
-    ).reset_index()
-
-    fig = go.Figure()
-    for seg in seg_data["Segment"].unique():
-        seg_df = seg_data[seg_data["Segment"] == seg]
-        color = seg_colors.get(seg, "#667EEA")
-        fig.add_trace(go.Scatter3d(
-            x=seg_df["Revenue"],
-            y=seg_df["Profit"],
-            z=seg_df["Orders"],
-            mode="markers+text",
-            name=seg,
-            marker=dict(
-                size=np.clip(seg_df["Revenue"] / seg_df["Revenue"].max() * 18, 6, 22),
-                color=color,
-                opacity=0.8,
-                line=dict(width=1, color="rgba(255,255,255,0.2)"),
-            ),
-            text=seg_df["Category"],
-            textfont=dict(size=8, color="#94A3B8"),
-            hovertemplate=f"<b>{seg}</b><br>%{{text}}<br>Revenue: ₹%{{x:,.0f}}<br>Profit: ₹%{{y:,.0f}}<br>Orders: %{{z}}<extra></extra>",
-        ))
-
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=520,
-        scene=dict(
-            xaxis=dict(title="Revenue (₹)", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            yaxis=dict(title="Profit (₹)", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            zaxis=dict(title="Orders", backgroundcolor="rgba(0,0,0,0)", gridcolor="rgba(255,255,255,0.06)", color="#94A3B8"),
-            bgcolor="rgba(0,0,0,0)",
-            camera=dict(eye=dict(x=1.8, y=1.8, z=1.2)),
-        ),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ── Discount vs Profit ──
-    section_header("sell", "Discount Impact on Profitability")
-
+    section_header("sell", "Discount Impact on Profitability", "Average profit by discount level and category")
     corr = get_discount_profit_correlation(filtered_df)
-
-    fig = px.scatter(
-        corr,
-        x="Discount",
-        y="Avg_Profit",
-        color="Category",
-        size="Count",
-        size_max=25,
-        color_discrete_sequence=COLOR_PALETTE,
-        hover_data={"Avg_Revenue": ":,.0f", "Count": True},
-    )
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=400,
-        xaxis=dict(title="Discount %", showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=".0%"),
-        yaxis=dict(title="Avg Profit (₹)", showgrid=True, gridcolor="rgba(255,255,255,0.04)", tickformat=","),
-    )
-    fig.update_traces(
-        marker=dict(line=dict(width=1, color="rgba(255,255,255,0.15)")),
-        hovertemplate="<b>%{customdata[0]}</b><br>Discount: %{x:.0%}<br>Avg Profit: ₹%{y:,.0f}<br>Orders: %{marker.size}<extra></extra>",
-    )
+    fig = px.scatter(corr, x="Discount", y="Avg_Profit", color="Category", size="Count", size_max=28, color_discrete_sequence=COLORS, hover_data={"Avg_Revenue": ":,.0f", "Count": True})
+    fig.update_layout(**PLOTLY_LAYOUT, height=420, xaxis=dict(title="Discount", tickformat=".0%"), yaxis=dict(title="Average Profit", tickformat=","))
+    fig.update_traces(marker=dict(line=dict(width=1, color="rgba(255,255,255,0.22)")), hovertemplate="Discount: %{x:.0%}<br>Avg Profit: Rs %{y:,.0f}<extra></extra>")
     st.plotly_chart(fig, use_container_width=True)
 
-
-# ═══════════════════════════════════════════════
-# PAGE: BUSINESS INSIGHTS
-# ═══════════════════════════════════════════════
+    section_header("view_in_ar", "3D Segment by Category", "Revenue, profit, and order volume")
+    seg_data = filtered_df.groupby(["Segment", "Category"]).agg(Revenue=("Revenue", "sum"), Profit=("Profit", "sum"), Orders=("Order_ID", "nunique")).reset_index()
+    fig = go.Figure()
+    for i, seg in enumerate(seg_data["Segment"].unique()):
+        seg_df = seg_data[seg_data["Segment"] == seg]
+        size_base = seg_df["Revenue"].max() or 1
+        fig.add_trace(go.Scatter3d(x=seg_df["Revenue"], y=seg_df["Profit"], z=seg_df["Orders"], mode="markers+text", name=seg, marker=dict(size=np.clip(seg_df["Revenue"] / size_base * 18, 6, 22), color=COLORS[i % len(COLORS)], opacity=0.84), text=seg_df["Category"], hovertemplate=f"{seg}<br>%{{text}}<br>Revenue: Rs %{{x:,.0f}}<br>Profit: Rs %{{y:,.0f}}<br>Orders: %{{z}}<extra></extra>"))
+    fig.update_layout(**PLOTLY_LAYOUT, height=510, scene=dict(xaxis=dict(title="Revenue", color="#CBD5E1"), yaxis=dict(title="Profit", color="#CBD5E1"), zaxis=dict(title="Orders", color="#CBD5E1"), bgcolor="rgba(0,0,0,0)"))
+    st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Business Insights":
-    st.markdown('<h1 style="text-align:center;">Business Insights & Recommendations</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center; color:#94A3B8;">AI-generated insights derived from comprehensive data analysis</p>', unsafe_allow_html=True)
-    st.markdown("")
-
-    # ── Key Findings ──
-    section_header("lightbulb", "Key Findings")
+    section_header("lightbulb", "Key Findings", "Generated from the current filter selection")
     insights = generate_business_insights(filtered_df, kpis)
-
     insight_cols = st.columns(2)
     for i, insight in enumerate(insights):
         with insight_cols[i % 2]:
             render_insight_card(insight)
 
-    st.markdown("")
-
-    # ── Profit Margin Heatmap ──
-    section_header("grid_on", "Profit Margin Heatmap — Category × Region")
-
-    heatmap_data = get_profit_margin_heatmap_data(filtered_df)
-
-    fig = go.Figure(data=go.Heatmap(
-        z=heatmap_data.values,
-        x=heatmap_data.columns.tolist(),
-        y=heatmap_data.index.tolist(),
-        colorscale=[
-            [0, "#FB7185"],
-            [0.3, "#764BA2"],
-            [0.5, "#667EEA"],
-            [0.7, "#4FD1C5"],
-            [1, "#34D399"],
-        ],
-        text=[[f"{v:.1f}%" for v in row] for row in heatmap_data.values],
-        texttemplate="%{text}",
-        textfont=dict(size=13, color="#E2E8F0"),
-        hovertemplate="<b>%{y}</b> — %{x}<br>Margin: %{z:.1f}%<extra></extra>",
-        colorbar=dict(
-            title="Margin %",
-            tickfont=dict(color="#94A3B8"),
-            titlefont=dict(color="#94A3B8"),
-        ),
-    ))
-    fig.update_layout(
-        **PLOTLY_LAYOUT,
-        height=380,
-        xaxis=dict(side="top"),
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ── Strategic Recommendations ──
-    section_header("tips_and_updates", "Strategic Recommendations")
-
-    recommendations = [
-        {
-            "icon": "rocket_launch",
-            "title": "Double Down on Festive Season",
-            "text": "Q4 (Oct-Nov) shows 30-40% revenue surge. Increase inventory and marketing spend 6 weeks before Diwali to maximize returns.",
-            "color": "#667EEA",
-        },
-        {
-            "icon": "precision_manufacturing",
-            "title": "Optimize Discount Strategy",
-            "text": "Discounts above 20% significantly erode margins. Cap maximum discounts at 20% and use bundled offers instead of deep cuts.",
-            "color": "#FBBF24",
-        },
-        {
-            "icon": "groups",
-            "title": "Expand Corporate Segment",
-            "text": "Corporate customers show higher AOV and consistent purchasing. Launch dedicated B2B programs with volume-based pricing.",
-            "color": "#34D399",
-        },
-        {
-            "icon": "inventory_2",
-            "title": "Focus on High-Margin Categories",
-            "text": "Accessories and supplies categories have the best margins. Cross-sell these with high-ticket items to improve overall profitability.",
-            "color": "#4FD1C5",
-        },
-        {
-            "icon": "location_on",
-            "title": "Strengthen East Region",
-            "text": "Eastern India shows untapped potential with lower penetration. Invest in regional marketing and fulfillment infrastructure.",
-            "color": "#FB7185",
-        },
-        {
-            "icon": "smartphone",
-            "title": "Promote Digital Payments",
-            "text": "UPI is the dominant payment mode. Offer cashback incentives on digital payments to reduce cash handling costs.",
-            "color": "#A78BFA",
-        },
-    ]
-
+    section_header("tips_and_updates", "Strategic Recommendations", "No hardcoded stories; these cards are calculated from the data")
+    recs = get_strategic_recommendations(filtered_df)
     rec_cols = st.columns(2)
-    for i, rec in enumerate(recommendations):
+    for i, rec in enumerate(recs):
         with rec_cols[i % 2]:
-            st.markdown(
-                f"""
-                <div style="background:rgba(26,31,46,0.65); backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08);
-                            border-radius:16px; padding:1.2rem 1.4rem; margin-bottom:0.8rem; border-left:4px solid {rec['color']};">
-                    <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.5rem;">
-                        <span class="material-icons-round" style="color:{rec['color']}; font-size:1.3rem;">{rec['icon']}</span>
-                        <span style="font-family:Outfit; font-weight:700; font-size:0.95rem; color:#E2E8F0;">{rec['title']}</span>
-                    </div>
-                    <p style="color:#94A3B8; font-size:0.85rem; line-height:1.5; margin:0;">{rec['text']}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            render_recommendation(rec)
 
-    st.markdown("")
+    section_header("grid_on", "Profit Margin Heatmap", "Category by region")
+    heatmap = get_profit_margin_heatmap_data(filtered_df)
+    fig = go.Figure(go.Heatmap(z=heatmap.values, x=heatmap.columns, y=heatmap.index, colorscale=[[0, COLORS[3]], [0.5, COLORS[2]], [1, COLORS[1]]], text=[[f"{v:.1f}%" for v in row] for row in heatmap.values], texttemplate="%{text}", hovertemplate="%{y} / %{x}<br>Margin: %{z:.1f}%<extra></extra>"))
+    st.plotly_chart(chart_layout(fig, 380, show_x_grid=False, show_y_grid=False), use_container_width=True)
 
-    # ── Data Export ──
-    section_header("download", "Export Data")
+    section_header("fact_check", "Data Source Check")
+    qcols = st.columns(4)
+    with qcols[0]:
+        render_card("table_rows", "Filtered Rows", f"{filtered_quality['rows']:,}", f"from {data_source_label}", COLORS[0])
+    with qcols[1]:
+        render_card("event", "Date Range", f"{filtered_quality['start_date'].strftime('%b %Y')} - {filtered_quality['end_date'].strftime('%b %Y')}", "based on Order_Date", COLORS[1])
+    with qcols[2]:
+        render_card("category", "Products", f"{filtered_quality['products']:,}", "unique product names", COLORS[2])
+    with qcols[3]:
+        render_card("error", "Missing Values", f"{filtered_quality['missing_values']:,}", "after validation", COLORS[3])
+
     col1, col2 = st.columns(2)
     with col1:
-        csv_data = filtered_df.to_csv(index=False)
-        st.download_button(
-            label="Download Filtered Data (CSV)",
-            data=csv_data,
-            file_name="sales_data_filtered.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+        st.download_button("Download filtered data", filtered_df.to_csv(index=False), "sales_data_filtered.csv", "text/csv", use_container_width=True)
     with col2:
-        summary_data = get_category_performance(filtered_df).to_csv(index=False)
-        st.download_button(
-            label="Download Category Summary (CSV)",
-            data=summary_data,
-            file_name="category_summary.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-
-# ═══════════════════════════════════════════════
-# FOOTER
-# ═══════════════════════════════════════════════
+        st.download_button("Download category summary", get_category_performance(filtered_df).to_csv(index=False), "category_summary.csv", "text/csv", use_container_width=True)
 
 st.markdown(
     """
     <div class="footer">
-        <p>
-            <span class="material-icons-round" style="font-size:1rem; vertical-align:middle; color:#667EEA;">analytics</span>
-            Sales Data Analysis & Business Insights · Built by <strong>Anurag Verma</strong>
-        </p>
-        <p style="font-size:0.7rem; color:#475569;">
-            Streamlit · Plotly · Pandas · NumPy · Python
-        </p>
+        <span class="material-icons-round">analytics</span>
+        Sales Data Analysis & Business Insights | Built by Anurag Verma | Streamlit, Plotly, Pandas
     </div>
     """,
     unsafe_allow_html=True,
