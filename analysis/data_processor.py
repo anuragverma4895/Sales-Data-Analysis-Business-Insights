@@ -1,20 +1,78 @@
 """
-Data Processor — Analytics Engine
-==================================
+Data Processor - Analytics Engine
+=================================
 Core analysis functions for the Sales Data Analysis dashboard.
-Provides KPI computation, trend analysis, regional breakdowns,
-and business insight generation.
+All dashboard values are calculated from data/sales_data.csv.
 """
 
-import pandas as pd
+from pathlib import Path
+
 import numpy as np
-from datetime import datetime
+import pandas as pd
 
 
-def load_and_clean_data(filepath="data/sales_data.csv"):
-    """Load the sales CSV and perform cleaning/type conversions."""
+REQUIRED_COLUMNS = {
+    "Order_ID",
+    "Order_Date",
+    "Customer_ID",
+    "Customer_Name",
+    "Segment",
+    "City",
+    "State",
+    "Region",
+    "Category",
+    "Sub_Category",
+    "Product_Name",
+    "Quantity",
+    "Unit_Price",
+    "Discount",
+    "Revenue",
+    "Profit",
+    "Payment_Mode",
+    "Ship_Mode",
+}
+
+NUMERIC_COLUMNS = ["Quantity", "Unit_Price", "Discount", "Revenue", "Profit"]
+
+
+def _safe_pct(numerator, denominator):
+    return np.where(denominator != 0, (numerator / denominator) * 100, 0)
+
+
+def _format_money(value):
+    value = float(value) if pd.notna(value) else 0.0
+    if abs(value) >= 1e7:
+        return f"Rs {value / 1e7:.2f} Cr"
+    if abs(value) >= 1e5:
+        return f"Rs {value / 1e5:.2f} L"
+    if abs(value) >= 1e3:
+        return f"Rs {value / 1e3:.1f} K"
+    return f"Rs {value:,.0f}"
+
+
+def load_and_clean_data(filepath=None):
+    """Load the sales CSV and perform validation/type conversions."""
+    if filepath is None:
+        filepath = Path(__file__).resolve().parents[1] / "data" / "sales_data.csv"
+
     df = pd.read_csv(filepath)
-    df["Order_Date"] = pd.to_datetime(df["Order_Date"])
+    missing_columns = REQUIRED_COLUMNS.difference(df.columns)
+    if missing_columns:
+        missing = ", ".join(sorted(missing_columns))
+        raise ValueError(f"sales_data.csv is missing required columns: {missing}")
+
+    df = df.drop_duplicates(subset=["Order_ID", "Product_Name", "Order_Date"]).copy()
+    df["Order_Date"] = pd.to_datetime(df["Order_Date"], errors="coerce")
+    for col in NUMERIC_COLUMNS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    invalid_counts = df[NUMERIC_COLUMNS + ["Order_Date"]].isna().sum()
+    invalid_counts = invalid_counts[invalid_counts > 0]
+    if not invalid_counts.empty:
+        details = ", ".join(f"{col}: {count}" for col, count in invalid_counts.items())
+        raise ValueError(f"sales_data.csv has invalid values in {details}")
+
+    df = df.sort_values("Order_Date").reset_index(drop=True)
     df["Month"] = df["Order_Date"].dt.to_period("M").astype(str)
     df["Month_Num"] = df["Order_Date"].dt.month
     df["Month_Name"] = df["Order_Date"].dt.strftime("%b")
@@ -22,8 +80,22 @@ def load_and_clean_data(filepath="data/sales_data.csv"):
     df["Quarter"] = df["Order_Date"].dt.quarter
     df["Day_of_Week"] = df["Order_Date"].dt.day_name()
     df["Week_Num"] = df["Order_Date"].dt.isocalendar().week.astype(int)
-    df["Profit_Margin"] = np.where(df["Revenue"] > 0, (df["Profit"] / df["Revenue"]) * 100, 0)
+    df["Profit_Margin"] = _safe_pct(df["Profit"], df["Revenue"])
     return df
+
+
+def get_data_quality_summary(df):
+    """Return source and quality stats displayed in the dashboard."""
+    return {
+        "rows": len(df),
+        "orders": df["Order_ID"].nunique(),
+        "customers": df["Customer_ID"].nunique(),
+        "products": df["Product_Name"].nunique(),
+        "cities": df["City"].nunique(),
+        "start_date": df["Order_Date"].min(),
+        "end_date": df["Order_Date"].max(),
+        "missing_values": int(df.isna().sum().sum()),
+    }
 
 
 def get_kpi_metrics(df):
@@ -35,7 +107,7 @@ def get_kpi_metrics(df):
     avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
     profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
     unique_customers = df["Customer_ID"].nunique()
-    avg_discount = df["Discount"].mean() * 100
+    avg_discount = df["Discount"].mean() * 100 if len(df) else 0
 
     return {
         "total_revenue": total_revenue,
@@ -64,6 +136,7 @@ def get_monthly_trends(df):
     )
     monthly["Month_Label"] = monthly["Month_Name"] + " " + monthly["Year"].astype(str)
     monthly["Revenue_Growth"] = monthly["Revenue"].pct_change() * 100
+    monthly["Profit_Margin"] = _safe_pct(monthly["Profit"], monthly["Revenue"])
     monthly["Cumulative_Revenue"] = monthly["Revenue"].cumsum()
     return monthly
 
@@ -81,10 +154,9 @@ def get_category_performance(df):
         )
         .reset_index()
     )
-    cat_perf["Profit_Margin"] = (cat_perf["Profit"] / cat_perf["Revenue"] * 100).round(2)
-    cat_perf["Revenue_Share"] = (cat_perf["Revenue"] / cat_perf["Revenue"].sum() * 100).round(2)
-    cat_perf = cat_perf.sort_values("Revenue", ascending=False)
-    return cat_perf
+    cat_perf["Profit_Margin"] = _safe_pct(cat_perf["Profit"], cat_perf["Revenue"]).round(2)
+    cat_perf["Revenue_Share"] = _safe_pct(cat_perf["Revenue"], cat_perf["Revenue"].sum()).round(2)
+    return cat_perf.sort_values("Revenue", ascending=False)
 
 
 def get_subcategory_performance(df):
@@ -99,13 +171,12 @@ def get_subcategory_performance(df):
         )
         .reset_index()
     )
-    sub_perf["Profit_Margin"] = (sub_perf["Profit"] / sub_perf["Revenue"] * 100).round(2)
-    sub_perf = sub_perf.sort_values("Revenue", ascending=False)
-    return sub_perf
+    sub_perf["Profit_Margin"] = _safe_pct(sub_perf["Profit"], sub_perf["Revenue"]).round(2)
+    return sub_perf.sort_values("Revenue", ascending=False)
 
 
 def get_regional_analysis(df):
-    """Region-wise & city-wise performance."""
+    """Region-wise performance."""
     regional = (
         df.groupby("Region")
         .agg(
@@ -116,9 +187,9 @@ def get_regional_analysis(df):
         )
         .reset_index()
     )
-    regional["Profit_Margin"] = (regional["Profit"] / regional["Revenue"] * 100).round(2)
-    regional = regional.sort_values("Revenue", ascending=False)
-    return regional
+    regional["Profit_Margin"] = _safe_pct(regional["Profit"], regional["Revenue"]).round(2)
+    regional["Revenue_Share"] = _safe_pct(regional["Revenue"], regional["Revenue"].sum()).round(2)
+    return regional.sort_values("Revenue", ascending=False)
 
 
 def get_city_analysis(df, top_n=15):
@@ -129,17 +200,18 @@ def get_city_analysis(df, top_n=15):
             Revenue=("Revenue", "sum"),
             Profit=("Profit", "sum"),
             Orders=("Order_ID", "nunique"),
+            Quantity=("Quantity", "sum"),
         )
         .reset_index()
         .sort_values("Revenue", ascending=False)
         .head(top_n)
     )
-    city["Profit_Margin"] = (city["Profit"] / city["Revenue"] * 100).round(2)
+    city["Profit_Margin"] = _safe_pct(city["Profit"], city["Revenue"]).round(2)
     return city
 
 
 def get_seasonal_analysis(df):
-    """Quarterly & seasonal pattern detection."""
+    """Quarterly performance."""
     quarterly = (
         df.groupby(["Year", "Quarter"])
         .agg(
@@ -148,13 +220,15 @@ def get_seasonal_analysis(df):
             Orders=("Order_ID", "nunique"),
         )
         .reset_index()
+        .sort_values(["Year", "Quarter"])
     )
     quarterly["Quarter_Label"] = "Q" + quarterly["Quarter"].astype(str) + " " + quarterly["Year"].astype(str)
+    quarterly["Profit_Margin"] = _safe_pct(quarterly["Profit"], quarterly["Revenue"]).round(2)
     return quarterly
 
 
 def get_customer_segments(df):
-    """Segment-wise analysis (Consumer / Corporate / Home Office)."""
+    """Segment-wise analysis."""
     segments = (
         df.groupby("Segment")
         .agg(
@@ -166,9 +240,9 @@ def get_customer_segments(df):
         )
         .reset_index()
     )
-    segments["Profit_Margin"] = (segments["Profit"] / segments["Revenue"] * 100).round(2)
-    segments["Revenue_Share"] = (segments["Revenue"] / segments["Revenue"].sum() * 100).round(2)
-    return segments
+    segments["Profit_Margin"] = _safe_pct(segments["Profit"], segments["Revenue"]).round(2)
+    segments["Revenue_Share"] = _safe_pct(segments["Revenue"], segments["Revenue"].sum()).round(2)
+    return segments.sort_values("Revenue", ascending=False)
 
 
 def get_payment_analysis(df):
@@ -183,108 +257,8 @@ def get_payment_analysis(df):
         .reset_index()
         .sort_values("Revenue", ascending=False)
     )
-    payment["Revenue_Share"] = (payment["Revenue"] / payment["Revenue"].sum() * 100).round(2)
+    payment["Revenue_Share"] = _safe_pct(payment["Revenue"], payment["Revenue"].sum()).round(2)
     return payment
-
-
-def get_top_products(df, n=10, metric="Revenue", ascending=False):
-    """Top/Bottom N products by a given metric."""
-    products = (
-        df.groupby("Product_Name")
-        .agg(
-            Revenue=("Revenue", "sum"),
-            Profit=("Profit", "sum"),
-            Quantity=("Quantity", "sum"),
-            Orders=("Order_ID", "nunique"),
-        )
-        .reset_index()
-        .sort_values(metric, ascending=ascending)
-        .head(n)
-    )
-    products["Profit_Margin"] = (products["Profit"] / products["Revenue"] * 100).round(2)
-    return products
-
-
-def get_yoy_growth(df):
-    """Year-over-Year growth comparison."""
-    yearly = (
-        df.groupby("Year")
-        .agg(
-            Revenue=("Revenue", "sum"),
-            Profit=("Profit", "sum"),
-            Orders=("Order_ID", "nunique"),
-            Customers=("Customer_ID", "nunique"),
-        )
-        .reset_index()
-    )
-    yearly["Revenue_Growth"] = yearly["Revenue"].pct_change() * 100
-    yearly["Profit_Growth"] = yearly["Profit"].pct_change() * 100
-    return yearly
-
-
-def get_profit_margin_heatmap_data(df):
-    """Profit margin by Category × Region for heatmap."""
-    heatmap = df.pivot_table(
-        values="Profit_Margin",
-        index="Category",
-        columns="Region",
-        aggfunc="mean",
-    ).round(2)
-    return heatmap
-
-
-def get_3d_surface_data(df):
-    """Revenue × Month × Category for 3D surface plot."""
-    surface = df.pivot_table(
-        values="Revenue",
-        index="Month_Num",
-        columns="Category",
-        aggfunc="sum",
-    ).fillna(0)
-    return surface
-
-
-def get_3d_scatter_data(df):
-    """Prepare data for 3D scatter: Quantity × Unit_Price × Profit."""
-    scatter = (
-        df.groupby(["Product_Name", "Category", "Sub_Category"])
-        .agg(
-            Quantity=("Quantity", "sum"),
-            Avg_Price=("Unit_Price", "mean"),
-            Profit=("Profit", "sum"),
-            Revenue=("Revenue", "sum"),
-        )
-        .reset_index()
-    )
-    return scatter
-
-
-def get_3d_bar_data(df):
-    """City × Category × Revenue for 3D bar chart."""
-    bar_data = df.pivot_table(
-        values="Revenue",
-        index="City",
-        columns="Category",
-        aggfunc="sum",
-    ).fillna(0)
-    # Top 10 cities
-    bar_data["Total"] = bar_data.sum(axis=1)
-    bar_data = bar_data.sort_values("Total", ascending=False).head(10).drop("Total", axis=1)
-    return bar_data
-
-
-def get_discount_profit_correlation(df):
-    """Discount vs Profit correlation data."""
-    corr_data = (
-        df.groupby(["Category", "Discount"])
-        .agg(
-            Avg_Profit=("Profit", "mean"),
-            Avg_Revenue=("Revenue", "mean"),
-            Count=("Order_ID", "count"),
-        )
-        .reset_index()
-    )
-    return corr_data
 
 
 def get_shipping_analysis(df):
@@ -299,84 +273,155 @@ def get_shipping_analysis(df):
         .reset_index()
         .sort_values("Revenue", ascending=False)
     )
-    shipping["Revenue_Share"] = (shipping["Revenue"] / shipping["Revenue"].sum() * 100).round(2)
+    shipping["Revenue_Share"] = _safe_pct(shipping["Revenue"], shipping["Revenue"].sum()).round(2)
     return shipping
 
 
+def get_top_products(df, n=10, metric="Revenue", ascending=False):
+    """Top/Bottom N products by a given metric."""
+    products = (
+        df.groupby("Product_Name")
+        .agg(
+            Revenue=("Revenue", "sum"),
+            Profit=("Profit", "sum"),
+            Quantity=("Quantity", "sum"),
+            Orders=("Order_ID", "nunique"),
+        )
+        .reset_index()
+    )
+    products["Profit_Margin"] = _safe_pct(products["Profit"], products["Revenue"]).round(2)
+    return products.sort_values(metric, ascending=ascending).head(n)
+
+
+def get_yoy_growth(df):
+    """Year-over-year growth comparison."""
+    yearly = (
+        df.groupby("Year")
+        .agg(
+            Revenue=("Revenue", "sum"),
+            Profit=("Profit", "sum"),
+            Orders=("Order_ID", "nunique"),
+            Customers=("Customer_ID", "nunique"),
+        )
+        .reset_index()
+        .sort_values("Year")
+    )
+    yearly["Revenue_Growth"] = yearly["Revenue"].pct_change() * 100
+    yearly["Profit_Growth"] = yearly["Profit"].pct_change() * 100
+    return yearly
+
+
+def get_profit_margin_heatmap_data(df):
+    """Profit margin by Category and Region for heatmap."""
+    profit = df.pivot_table(values="Profit", index="Category", columns="Region", aggfunc="sum").fillna(0)
+    revenue = df.pivot_table(values="Revenue", index="Category", columns="Region", aggfunc="sum").fillna(0)
+    heatmap = (profit / revenue.replace(0, np.nan) * 100).fillna(0)
+    return heatmap.round(2)
+
+
+def get_3d_surface_data(df):
+    """Revenue by Month and Category for 3D surface plot."""
+    return df.pivot_table(values="Revenue", index="Month_Num", columns="Category", aggfunc="sum").fillna(0)
+
+
+def get_3d_scatter_data(df):
+    """Prepare data for 3D scatter: quantity, unit price, and profit."""
+    return (
+        df.groupby(["Product_Name", "Category", "Sub_Category"])
+        .agg(
+            Quantity=("Quantity", "sum"),
+            Avg_Price=("Unit_Price", "mean"),
+            Profit=("Profit", "sum"),
+            Revenue=("Revenue", "sum"),
+        )
+        .reset_index()
+    )
+
+
+def get_3d_bar_data(df):
+    """City by Category by Revenue for 3D city chart."""
+    bar_data = df.pivot_table(values="Revenue", index="City", columns="Category", aggfunc="sum").fillna(0)
+    bar_data["Total"] = bar_data.sum(axis=1)
+    return bar_data.sort_values("Total", ascending=False).head(10).drop("Total", axis=1)
+
+
+def get_discount_profit_correlation(df):
+    """Discount vs profit correlation data."""
+    return (
+        df.groupby(["Category", "Discount"])
+        .agg(
+            Avg_Profit=("Profit", "mean"),
+            Avg_Revenue=("Revenue", "mean"),
+            Count=("Order_ID", "count"),
+        )
+        .reset_index()
+    )
+
+
 def generate_business_insights(df, kpis):
-    """Auto-generate key business insights from the data."""
+    """Generate key findings from the currently filtered data."""
     insights = []
-
-    # 1. Top performing category
     cat_perf = get_category_performance(df)
-    top_cat = cat_perf.iloc[0]
-    insights.append({
-        "icon": "trending_up",
-        "title": "Top Revenue Category",
-        "text": f"{top_cat['Category']} leads with ₹{top_cat['Revenue']:,.0f} in revenue, "
-                f"contributing {top_cat['Revenue_Share']:.1f}% of total sales.",
-        "type": "success",
-    })
-
-    # 2. Most profitable category
-    most_profitable = cat_perf.sort_values("Profit_Margin", ascending=False).iloc[0]
-    insights.append({
-        "icon": "account_balance_wallet",
-        "title": "Highest Profit Margin",
-        "text": f"{most_profitable['Category']} has the highest profit margin at "
-                f"{most_profitable['Profit_Margin']:.1f}%, making it the most efficient category.",
-        "type": "info",
-    })
-
-    # 3. Regional insight
-    regional = get_regional_analysis(df)
-    top_region = regional.iloc[0]
-    insights.append({
-        "icon": "location_on",
-        "title": "Strongest Region",
-        "text": f"The {top_region['Region']} region dominates with ₹{top_region['Revenue']:,.0f} "
-                f"revenue and {top_region['Orders']} orders.",
-        "type": "success",
-    })
-
-    # 4. Seasonal peak
-    monthly = get_monthly_trends(df)
-    peak_month = monthly.loc[monthly["Revenue"].idxmax()]
-    insights.append({
-        "icon": "calendar_month",
-        "title": "Peak Sales Month",
-        "text": f"{peak_month['Month_Label']} recorded the highest revenue at "
-                f"₹{peak_month['Revenue']:,.0f}, driven by festive season demand.",
-        "type": "warning",
-    })
-
-    # 5. Customer segment
-    segments = get_customer_segments(df)
-    top_segment = segments.sort_values("Revenue", ascending=False).iloc[0]
-    insights.append({
-        "icon": "groups",
-        "title": "Dominant Customer Segment",
-        "text": f"{top_segment['Segment']} customers account for {top_segment['Revenue_Share']:.1f}% "
-                f"of revenue with {top_segment['Customers']} unique customers.",
-        "type": "info",
-    })
-
-    # 6. Discount impact
-    high_disc = df[df["Discount"] >= 0.20]
-    low_disc = df[df["Discount"] < 0.10]
-    if len(high_disc) > 0 and len(low_disc) > 0:
-        high_margin = high_disc["Profit_Margin"].mean()
-        low_margin = low_disc["Profit_Margin"].mean()
+    if not cat_perf.empty:
+        top_cat = cat_perf.iloc[0]
         insights.append({
-            "icon": "sell",
-            "title": "Discount Impact Alert",
-            "text": f"Orders with 20%+ discount average {high_margin:.1f}% margin vs "
-                    f"{low_margin:.1f}% for orders under 10% discount. "
-                    f"Deep discounting is eroding profits.",
-            "type": "danger",
+            "icon": "trending_up",
+            "title": "Top Revenue Category",
+            "text": f"{top_cat['Category']} leads with {_format_money(top_cat['Revenue'])}, contributing {top_cat['Revenue_Share']:.1f}% of revenue.",
+            "type": "success",
         })
 
-    # 7. YoY Growth
+        most_profitable = cat_perf.sort_values("Profit_Margin", ascending=False).iloc[0]
+        insights.append({
+            "icon": "account_balance_wallet",
+            "title": "Highest Profit Margin",
+            "text": f"{most_profitable['Category']} has the highest category margin at {most_profitable['Profit_Margin']:.1f}%.",
+            "type": "info",
+        })
+
+    regional = get_regional_analysis(df)
+    if not regional.empty:
+        top_region = regional.iloc[0]
+        insights.append({
+            "icon": "location_on",
+            "title": "Strongest Region",
+            "text": f"{top_region['Region']} leads with {_format_money(top_region['Revenue'])} and {int(top_region['Orders'])} orders.",
+            "type": "success",
+        })
+
+    monthly = get_monthly_trends(df)
+    if not monthly.empty:
+        peak_month = monthly.loc[monthly["Revenue"].idxmax()]
+        insights.append({
+            "icon": "calendar_month",
+            "title": "Peak Sales Month",
+            "text": f"{peak_month['Month_Label']} recorded the highest revenue at {_format_money(peak_month['Revenue'])}.",
+            "type": "warning",
+        })
+
+    segments = get_customer_segments(df)
+    if not segments.empty:
+        top_segment = segments.iloc[0]
+        insights.append({
+            "icon": "groups",
+            "title": "Dominant Customer Segment",
+            "text": f"{top_segment['Segment']} customers account for {top_segment['Revenue_Share']:.1f}% of revenue across {int(top_segment['Customers'])} customers.",
+            "type": "info",
+        })
+
+    high_disc = df[df["Discount"] >= 0.20]
+    low_disc = df[df["Discount"] < 0.10]
+    if len(high_disc) and len(low_disc):
+        high_margin = high_disc["Profit_Margin"].mean()
+        low_margin = low_disc["Profit_Margin"].mean()
+        insight_type = "danger" if high_margin < low_margin else "success"
+        insights.append({
+            "icon": "sell",
+            "title": "Discount Impact",
+            "text": f"20%+ discount orders average {high_margin:.1f}% margin versus {low_margin:.1f}% for orders under 10% discount.",
+            "type": insight_type,
+        })
+
     yoy = get_yoy_growth(df)
     if len(yoy) > 1 and not pd.isna(yoy.iloc[-1]["Revenue_Growth"]):
         growth = yoy.iloc[-1]["Revenue_Growth"]
@@ -384,9 +429,81 @@ def generate_business_insights(df, kpis):
         insights.append({
             "icon": "show_chart",
             "title": "Year-over-Year Growth",
-            "text": f"Revenue {direction} by {abs(growth):.1f}% in {int(yoy.iloc[-1]['Year'])} "
-                    f"compared to {int(yoy.iloc[-2]['Year'])}.",
+            "text": f"Revenue {direction} by {abs(growth):.1f}% in {int(yoy.iloc[-1]['Year'])} versus {int(yoy.iloc[-2]['Year'])}.",
             "type": "success" if growth > 0 else "danger",
         })
 
     return insights
+
+
+def get_strategic_recommendations(df):
+    """Generate recommendation cards from the currently filtered data."""
+    recommendations = []
+
+    monthly = get_monthly_trends(df)
+    if len(monthly) > 1:
+        peak_month = monthly.loc[monthly["Revenue"].idxmax()]
+        avg_monthly_revenue = monthly["Revenue"].mean()
+        lift = ((peak_month["Revenue"] - avg_monthly_revenue) / avg_monthly_revenue * 100) if avg_monthly_revenue else 0
+        recommendations.append({
+            "icon": "calendar_month",
+            "title": "Plan Around Peak Demand",
+            "text": f"{peak_month['Month_Label']} is the strongest month at {_format_money(peak_month['Revenue'])}, {lift:.1f}% above the filtered monthly average.",
+            "color": "#38BDF8",
+        })
+
+    high_disc = df[df["Discount"] >= 0.20]
+    low_disc = df[df["Discount"] < 0.10]
+    if len(high_disc) and len(low_disc):
+        high_margin = high_disc["Profit_Margin"].mean()
+        low_margin = low_disc["Profit_Margin"].mean()
+        recommendations.append({
+            "icon": "sell",
+            "title": "Tighten Deep Discounting",
+            "text": f"20%+ discount orders average {high_margin:.1f}% margin versus {low_margin:.1f}% for under-10% discount orders.",
+            "color": "#F59E0B",
+        })
+
+    segments = get_customer_segments(df)
+    if not segments.empty:
+        best_segment = segments.sort_values("Avg_Order_Value", ascending=False).iloc[0]
+        recommendations.append({
+            "icon": "groups",
+            "title": "Prioritize High-Value Customers",
+            "text": f"{best_segment['Segment']} has the highest average order value at {_format_money(best_segment['Avg_Order_Value'])} across {int(best_segment['Customers'])} customers.",
+            "color": "#22C55E",
+        })
+
+    cat_perf = get_category_performance(df)
+    if not cat_perf.empty:
+        high_margin_cat = cat_perf.sort_values("Profit_Margin", ascending=False).iloc[0]
+        recommendations.append({
+            "icon": "inventory_2",
+            "title": "Push the Best-Margin Category",
+            "text": f"{high_margin_cat['Category']} leads margin at {high_margin_cat['Profit_Margin']:.1f}% and contributes {high_margin_cat['Revenue_Share']:.1f}% of revenue.",
+            "color": "#14B8A6",
+        })
+
+    regional = get_regional_analysis(df)
+    if len(regional) > 1:
+        weakest_region = regional.sort_values("Revenue").iloc[0]
+        strongest_region = regional.sort_values("Revenue", ascending=False).iloc[0]
+        gap = strongest_region["Revenue"] - weakest_region["Revenue"]
+        recommendations.append({
+            "icon": "location_on",
+            "title": "Close the Regional Revenue Gap",
+            "text": f"{weakest_region['Region']} trails {strongest_region['Region']} by {_format_money(gap)} in filtered revenue.",
+            "color": "#EF4444",
+        })
+
+    payment = get_payment_analysis(df)
+    if not payment.empty:
+        top_payment = payment.iloc[0]
+        recommendations.append({
+            "icon": "payments",
+            "title": "Lean Into Preferred Payment Mode",
+            "text": f"{top_payment['Payment_Mode']} contributes {top_payment['Revenue_Share']:.1f}% of revenue across {int(top_payment['Orders'])} orders.",
+            "color": "#A855F7",
+        })
+
+    return recommendations
