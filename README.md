@@ -103,19 +103,35 @@ streamlit run app.py
 
 ## ☁️ Deployment
 
-### Streamlit Community Cloud (Recommended)
-1. Push your code to GitHub
-2. Visit [share.streamlit.io](https://share.streamlit.io)
-3. Connect your GitHub account
-4. Select this repository → `app.py` → Deploy
-5. Your dashboard will be live with a shareable URL
+### Render Deployment (Recommended & Fully Configured)
+This project is pre-configured for a seamless "One-Click" deployment on **Render.com**.
 
-### Heroku (Alternative)
-```bash
-heroku create your-app-name
-git push heroku main
-```
-The `Procfile` and `setup.sh` are already configured for Heroku deployment.
+**Method 1: Using Render Blueprint (Easiest)**
+1. Go to your [Render Dashboard](https://dashboard.render.com/).
+2. Click **New** → **Blueprint**.
+3. Connect your GitHub account and select this repository.
+4. Render will automatically read the `render.yaml` file and configure everything for you.
+5. Click **Apply** to deploy!
+
+**Method 2: Manual Web Service Setup**
+If you prefer setting it up manually:
+1. Go to [Render](https://dashboard.render.com/) → **New** → **Web Service**.
+2. Select your GitHub repository (`Sales-Data-Analysis-Business-Insights`).
+3. Use the following settings:
+   - **Environment:** `Python 3`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `streamlit run app.py --server.port $PORT`
+4. **Environment Variables (Optional):**
+   - The app does **not** require any secret API keys or DB passwords to run.
+   - However, if you want to force a specific Python version, add:
+     - Key: `PYTHON_VERSION`, Value: `3.9.0`
+5. Click **Create Web Service**. Your app will be live in a few minutes!
+
+### Streamlit Community Cloud (Alternative)
+1. Push your code to GitHub.
+2. Visit [share.streamlit.io](https://share.streamlit.io).
+3. Connect your GitHub account.
+4. Select this repository → `app.py` → Deploy.
 
 ---
 
