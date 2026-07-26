@@ -1,6 +1,6 @@
 # Sales Data Analysis & Business Insights
 
-A Streamlit + Plotly dashboard for sales analytics using either an uploaded verified CSV or the checked-in fallback source file at `data/sales_data.csv`.
+A Streamlit + Plotly dashboard for sales analytics using uploaded CSV, TSV, or Excel files, with a checked-in fallback source at `data/sales_data.csv`.
 
 The running app does not create random rows, mock orders, or sample values. Every KPI, chart, insight, recommendation, filter, and export is calculated from the active CSV loaded by `analysis/data_processor.py`.
 
@@ -11,15 +11,16 @@ The running app does not create random rows, mock orders, or sample values. Ever
 - Regional, city, category, sub-category, product, customer segment, payment, shipping, and discount analysis.
 - 3D visualizations for revenue surfaces, city/category performance, product performance, and segment/category performance.
 - Data-driven findings and strategic recommendations based on the current filters.
-- CSV upload support for verified business exports, plus CSV export for filtered records and category summary.
+- CSV, TSV, and Excel upload support with auto-detected sales column names, plus CSV export for filtered records and category summary.
+- Ask-your-data answers for revenue, profit, top category/region/product, and simple next-month revenue forecast.
 
 ## Data Source
 
 Default fallback source: `data/sales_data.csv`
 
-For actual business data, use the sidebar uploader in the app or replace `data/sales_data.csv` with your verified export.
+For actual business data, use the sidebar uploader in the app or replace `data/sales_data.csv` with your verified export. The uploader accepts `.csv`, `.tsv`, `.xlsx`, and `.xls`.
 
-Expected columns:
+Preferred canonical columns:
 
 `Order_ID`, `Order_Date`, `Customer_ID`, `Customer_Name`, `Segment`, `City`, `State`, `Region`, `Category`, `Sub_Category`, `Product_Name`, `Quantity`, `Unit_Price`, `Discount`, `Revenue`, `Profit`, `Payment_Mode`, `Ship_Mode`
 
@@ -32,7 +33,7 @@ Current source coverage in the included CSV:
 - 22 cities
 - Date range: 2023-01-01 to 2024-12-30
 
-To use your own verified business data, upload a CSV from the sidebar or replace `data/sales_data.csv` with a file that follows the same schema. The app validates required columns and numeric/date fields on load.
+To use your own verified business data, upload a file from the sidebar or replace `data/sales_data.csv`. Common headers like `Order ID`, `Order_Date`, `Date`, `Sales`, `Total Revenue`, `Total Profit`, `Item Type`, `Unit Price`, and `Quantity` are auto-mapped. Minimum required fields are order id, order date, and revenue/sales amount.
 
 ## Run Locally
 

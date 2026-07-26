@@ -38,18 +38,18 @@ COLUMN_ALIASES = {
     "Order_Date": ["order date", "order_date", "date", "invoice date", "purchase date", "transaction date"],
     "Customer_ID": ["customer id", "customer_id", "customerid", "client id", "buyer id"],
     "Customer_Name": ["customer name", "customer_name", "customer", "client", "buyer name", "name"],
-    "Segment": ["segment", "customer segment", "market segment"],
+    "Segment": ["segment", "customer segment", "market segment", "sales channel", "channel", "order priority"],
     "City": ["city", "town"],
-    "State": ["state", "province"],
+    "State": ["state", "province", "country"],
     "Region": ["region", "zone", "area"],
-    "Category": ["category", "product category", "item category"],
-    "Sub_Category": ["sub-category", "sub_category", "subcategory", "sub category", "product sub-category"],
-    "Product_Name": ["product name", "product_name", "product", "item", "item name", "sku name"],
+    "Category": ["category", "product category", "item category", "item type", "itemtype"],
+    "Sub_Category": ["sub-category", "sub_category", "subcategory", "sub category", "product sub-category", "item type", "itemtype"],
+    "Product_Name": ["product name", "product_name", "product", "item", "item name", "sku name", "item type", "itemtype"],
     "Quantity": ["quantity", "qty", "units", "unit sold", "units sold"],
-    "Unit_Price": ["unit price", "unit_price", "price", "selling price", "rate"],
+    "Unit_Price": ["unit price", "unit_price", "price", "selling price", "rate", "unit cost"],
     "Discount": ["discount", "discount %", "discount percent", "discount rate"],
-    "Revenue": ["revenue", "sales", "amount", "total", "total sales", "sales amount", "net sales"],
-    "Profit": ["profit", "gross profit", "net profit", "margin amount"],
+    "Revenue": ["revenue", "sales", "amount", "total", "total sales", "sales amount", "net sales", "total revenue", "gross sales"],
+    "Profit": ["profit", "gross profit", "net profit", "margin amount", "total profit"],
     "Payment_Mode": ["payment mode", "payment_mode", "payment", "payment method", "mode of payment"],
     "Ship_Mode": ["ship mode", "ship_mode", "shipping mode", "delivery mode", "shipment mode"],
 }
@@ -87,6 +87,12 @@ def _standardize_columns(df):
                 rename_map[normalized[key]] = canonical
                 break
     df = df.rename(columns=rename_map)
+    if "Profit" not in df.columns and {"Revenue", "Total Cost"}.issubset(df.columns):
+        df["Profit"] = pd.to_numeric(df["Revenue"], errors="coerce") - pd.to_numeric(df["Total Cost"], errors="coerce")
+    if "Category" not in df.columns and "Product_Name" in df.columns:
+        df["Category"] = df["Product_Name"]
+    if "Product_Name" not in df.columns and "Category" in df.columns:
+        df["Product_Name"] = df["Category"]
     return df
 
 
@@ -121,7 +127,10 @@ def load_and_clean_data(filepath=None):
     if filepath is None:
         filepath = Path(__file__).resolve().parents[1] / "data" / "sales_data.csv"
 
-    df = pd.read_csv(filepath)
+    if isinstance(filepath, pd.DataFrame):
+        df = filepath.copy()
+    else:
+        df = pd.read_csv(filepath)
     df = _standardize_columns(df)
 
     required_core = {"Order_ID", "Order_Date", "Revenue"}
@@ -130,7 +139,7 @@ def load_and_clean_data(filepath=None):
         missing = ", ".join(sorted(missing_core))
         available = ", ".join(map(str, df.columns))
         raise ValueError(
-            f"Uploaded CSV must include order id, order date, and revenue/sales amount columns. "
+            f"Uploaded file must include order id, order date, and revenue/sales amount columns. "
             f"Missing: {missing}. Found columns: {available}"
         )
 
