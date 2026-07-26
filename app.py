@@ -4,6 +4,7 @@ Streamlit dashboard using uploaded CSV/TSV/Excel or data/sales_data.csv.
 """
 
 from io import BytesIO
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -200,6 +201,7 @@ uploaded_file = st.sidebar.file_uploader(
 )
 uploaded_bytes = uploaded_file.getvalue() if uploaded_file else None
 source_label = uploaded_file.name if uploaded_file else "data/sales_data.csv"
+source_key = hashlib.md5(uploaded_bytes or b"fallback-source").hexdigest()[:10]
 
 try:
     df = load_data(source_label, uploaded_bytes)
@@ -214,23 +216,40 @@ except Exception as exc:
         st.stop()
 
 quality = get_data_quality_summary(df)
+source_kpis = get_kpi_metrics(df)
 
 with st.sidebar:
     st.markdown("<h1 style='font-size:1.5rem'>Sales Analytics</h1><p class='small-note'>Live dashboard from your uploaded file or fallback CSV.</p>", unsafe_allow_html=True)
-    page = st.radio("Navigation", ["Overview", "Revenue & Trends", "Regional Analysis", "Product Performance", "Customer Insights", "Business Insights"])
+    page = st.radio("Navigation", ["Overview", "Revenue & Trends", "Regional Analysis", "Product Performance", "Customer Insights", "Business Insights"], key=f"page_{source_key}")
     st.markdown("---")
     st.markdown("### Filters")
     years = sorted(df["Year"].unique())
-    selected_years = st.multiselect("Year", years, default=years)
+    selected_years = st.multiselect("Year", years, default=years, key=f"years_{source_key}")
     min_date = df["Order_Date"].min().date()
     max_date = df["Order_Date"].max().date()
-    date_range = st.date_input("Order date", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+    date_range = st.date_input("Order date", value=(min_date, max_date), min_value=min_date, max_value=max_date, key=f"dates_{source_key}")
     start_date, end_date = date_range if isinstance(date_range, tuple) and len(date_range) == 2 else (min_date, max_date)
-    selected_regions = st.multiselect("Region", sorted(df["Region"].unique()), default=sorted(df["Region"].unique()))
-    selected_categories = st.multiselect("Category", sorted(df["Category"].unique()), default=sorted(df["Category"].unique()))
-    selected_segments = st.multiselect("Segment", sorted(df["Segment"].unique()), default=sorted(df["Segment"].unique()))
+    selected_regions = st.multiselect("Region", sorted(df["Region"].unique()), default=sorted(df["Region"].unique()), key=f"regions_{source_key}")
+    selected_categories = st.multiselect("Category", sorted(df["Category"].unique()), default=sorted(df["Category"].unique()), key=f"categories_{source_key}")
+    selected_segments = st.multiselect("Segment", sorted(df["Segment"].unique()), default=sorted(df["Segment"].unique()), key=f"segments_{source_key}")
     st.markdown(f"<div class='small-note'><b>{quality['rows']:,}</b> rows<br>{source_label}<br>{quality['start_date'].strftime('%d %b %Y')} to {quality['end_date'].strftime('%d %b %Y')}</div>", unsafe_allow_html=True)
 
+if uploaded_file:
+    st.success(
+        f"Loaded {source_label}: {quality['rows']:,} rows, {quality['orders']:,} orders, "
+        f"{money(source_kpis['total_revenue'])} revenue. Filters and charts now use this uploaded file."
+    )
+    with st.expander("Uploaded data preview and detected columns", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            card("Rows", f"{quality['rows']:,}", "uploaded data", COLORS[0])
+        with c2:
+            card("Date Range", f"{quality['start_date'].strftime('%b %Y')} - {quality['end_date'].strftime('%b %Y')}", "detected dates", COLORS[1])
+        with c3:
+            card("Revenue", money(source_kpis["total_revenue"]), "detected sales", COLORS[2])
+        with c4:
+            card("Products/Categories", f"{quality['products']:,}", "detected labels", COLORS[4])
+        st.dataframe(df.head(20), use_container_width=True, hide_index=True)
 filtered_df = df[
     (df["Year"].isin(selected_years))
     & (df["Order_Date"] >= pd.to_datetime(start_date))
@@ -261,7 +280,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-question = st.text_input("Ask your data", placeholder="Example: total revenue, top region, top product, profit margin, predict next month revenue")
+question = st.text_input("Ask your data", placeholder="Example: total revenue, top region, top product, profit margin, predict next month revenue", key=f"question_{source_key}")
 if question:
     st.success(answer_data_question(filtered_df, question))
 
